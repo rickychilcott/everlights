@@ -1,0 +1,169 @@
+#!/usr/bin/env ruby
+require_relative "../lib/everlights"
+require "optparse"
+
+USAGE = <<~TXT
+  Usage: everlights COMMAND [args] [options]
+
+  Bridge:
+    bridge                                firmware, network, cloud, zone health
+    bridge time [TIME]                    set the bridge clock (default now)
+    bridge reboot --yes                   restart the bridge
+    zones                                 raw zone data (JSON)
+
+  Now (a running show takes back over at its next sequence change):
+    show                                  what each zone is playing
+    set COLOR... [--effect E[=N]]         show colors now
+    play SEQUENCE                         show a saved sequence now
+    off                                   lights dark
+    clear                                 hand control back to the calendar
+
+  Sequences:
+    sequence list [FILTER]
+    sequence add NAME COLOR... [--effect E[=N]]...
+    sequence update NAME COLOR... [--effect E[=N]]...   replace colors and effects
+    sequence remove NAME
+
+  Calendar:
+    calendar list [--limit DAYS]          upcoming shows, default next 365 days
+    calendar add DATE NAME SEQ[:SECS],... [--start HH:MM] [--end HH:MM] [--until DATE]
+                                          default dusk to 23:00, 20s per sequence
+    calendar remove DATE NAME
+
+  Options:
+TXT
+
+opts = {effects: {}, limit: 365}
+parser = OptionParser.new do |o|
+  o.banner = USAGE
+  o.on("--host HOST", "bridge IP (default $EVERLIGHTS_HOST)") { opts[:host] = _1 }
+  o.on("--zone SERIAL", "limit set/play/off/clear/show to a zone (repeatable)") { (opts[:zones] ||= []) << _1 }
+  o.on("--effect E[=N]", "N 0-255 (default 128): #{Everlights::EFFECTS.join(" ")}") do |e|
+    type, value = e.split("=")
+    opts[:effects][type] = value
+  end
+  o.on("--limit DAYS", Integer, "calendar list horizon") { opts[:limit] = _1 }
+  o.on("--start HH:MM", "fixed start instead of dusk") { opts[:start] = _1 }
+  o.on("--end HH:MM", "default 23:00; earlier than start = next morning") { opts[:end] = _1 }
+  o.on("--until DATE", "repeat nightly through DATE") { opts[:until] = _1 }
+  o.on("--json", "JSON output for lists, show and bridge") { opts[:json] = true }
+  o.on("--yes", "confirm bridge reboot") { opts[:yes] = true }
+end
+parser.parse!
+abort parser.help if ARGV.empty?
+
+def json(obj) = puts(JSON.pretty_generate(obj))
+
+begin
+  el = Everlights::Client.new(opts[:host])
+  zones = opts[:zones]
+  cmd = ARGV.shift
+  cmd = "#{cmd} #{ARGV.shift}" if %w[sequence calendar].include?(cmd) ||
+                                   (cmd == "bridge" && %w[time reboot].include?(ARGV.first))
+  arg = ARGV.join(" ")
+
+  case cmd
+  when "bridge"
+    b = el.status
+    if opts[:json] then json(b)
+    else
+      at = ->(v) { v ? Time.parse(v).localtime.strftime("%Y-%m-%d %H:%M:%S") : "?" }
+      net = b["network"] || {}
+      puts "Bridge #{b["serial"]}  firmware #{b["firmwareVersion"]}, radio #{b["radioFirmwareVersion"]}"
+      puts "  network  #{net["interface"] || "?"} #{b["localIp"]}, ntp #{net["ntp"] ? "ok" : "off"}"
+      puts "  cloud    #{b["serverReachable"] ? "reachable" : "UNREACHABLE"}, last check-in #{at.(b["lastServerCheckin"])}"
+      puts "  reboots  #{b["rebootCount"]}"
+      b["zones"].each do |z|
+        puts "Zone #{z["serial"]}  firmware #{z["firmwareVersion"]}, #{z["configuredLength"]} pixels #{z["colorOrder"]}, #{z["active"] ? "active" : "INACTIVE"}"
+        puts "  signal   rssi #{z["rssi"]}, snr #{z["snr"]}"
+        puts "  sensors  temperature #{z["temperature"]}, voltage #{z["voltage"]}, current #{z["current"]} (raw, units unknown)"
+        puts "  last     request #{at.(z["lastRequestDate"])}, response #{at.(z["lastResponseDate"])}, reboots #{z["rebootCount"]}"
+      end
+    end
+  when "bridge time"
+    time = ARGV.empty? ? Time.now : Time.parse(arg)
+    el.set_time(time)
+    puts "bridge clock set to #{time}"
+  when "bridge reboot"
+    abort "rebooting interrupts the lights; rerun with --yes" unless opts[:yes]
+    el.reboot
+    puts "rebooting bridge"
+  when "zones" then json el.zones
+  when "show"
+    playing = el.now_playing(zones: zones)
+    if opts[:json] then json(playing)
+    else
+      playing.each do |zone, p|
+        what = if p[:off] then "off"
+               elsif p[:name] then "#{p[:name]}#{" (#{p[:show]} show)" if p[:show]}"
+               else "custom colors #{p[:pattern].join(" ")}"
+               end
+        fx = p[:effects].map { "#{_1["effectType"]}=#{_1["value"]}" }.join(" ")
+        puts "#{zone}  #{what}#{"  #{fx}" unless fx.empty?}"
+      end
+    end
+  when "set"
+    abort "set needs colors" if ARGV.empty?
+    el.set(*ARGV, effects: opts[:effects], zones: zones)
+    puts "showing #{arg}"
+  when "play" then puts "playing #{el.play(arg, zones: zones)["alias"]}"
+  when "off"
+    el.off(zones: zones)
+    puts "off"
+  when "clear"
+    el.clear(zones: zones)
+    puts "cleared, calendar in control"
+
+  when "sequence list"
+    seqs = el.sequences.list(arg)
+    if opts[:json] then json(seqs)
+    else
+      seqs.each do |s|
+        mark = s["id"].start_with?(Everlights::BUILTIN_PREFIX) ? " " : "*"
+        fx = s["effects"].map { "#{_1["effectType"]}=#{_1["value"]}" }.join(" ")
+        puts "#{mark} #{s["alias"].ljust(28)} #{s["pattern"].size.to_s.rjust(3)} colors  #{fx}"
+      end
+    end
+  when "sequence add"
+    name, *colors = ARGV
+    abort "sequence add NAME COLOR..." if colors.empty?
+    el.sequences.add(name, *colors, effects: opts[:effects])
+    puts "added sequence #{name}"
+  when "sequence update"
+    name, *colors = ARGV
+    abort "sequence update NAME COLOR..." if colors.empty?
+    el.sequences.update(name, *colors, effects: opts[:effects])
+    puts "updated sequence #{name}"
+  when "sequence remove"
+    el.sequences.remove(arg)
+    puts "removed sequence #{arg}"
+
+  when "calendar list"
+    shows = el.calendar.list(limit: opts[:limit])
+    if opts[:json]
+      json(shows.map { |s| s.merge(date: s[:date].iso8601, start: s[:start].iso8601, finish: s[:finish].iso8601) })
+    elsif shows.empty?
+      puts "nothing scheduled in the next #{opts[:limit]} days"
+    else
+      shows.each do |s|
+        window = "#{s[:dusk] ? "dusk" : s[:start].strftime("%H:%M")}-#{s[:finish].strftime("%H:%M")}"
+        seqs = s[:sequences].map { |n, secs| "#{n}:#{secs}" }.join(", ")
+        puts "#{s[:start].strftime("%a %Y-%m-%d")}  #{window.ljust(11)}  #{s[:name]}  (#{seqs})"
+      end
+    end
+  when "calendar add"
+    date, name, *rest = ARGV
+    abort "calendar add DATE NAME SEQ[:SECS],..." if rest.empty?
+    el.calendar.add(date, name, rest.join(" "), start: opts[:start], finish: opts[:end] || "23:00", through: opts[:until])
+    puts "added #{name} on #{date}#{" through #{opts[:until]}" if opts[:until]}"
+  when "calendar remove"
+    date, *name = ARGV
+    abort "calendar remove DATE NAME" if name.empty?
+    el.calendar.remove(date, name.join(" "))
+    puts "removed #{name.join(" ")} on #{date}"
+
+  else abort parser.help
+  end
+rescue Everlights::Error, IndexError, ArgumentError, TypeError, Date::Error, SystemCallError, Net::OpenTimeout => e
+  abort "error: #{e.message}"
+end
