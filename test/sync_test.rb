@@ -158,17 +158,24 @@ class SyncTest < Minitest::Test
     assert_equal [], b.event("Fixed")["flags"]
   end
 
-def test_evening_end_before_dusk_skips_the_night_instead_of_running_all_day
-  # Columbus, OH sunset on Jun 28 is ~21:05; an 20:45 end is before it
-  cfg = {"location" => {"lat" => 39.96, "lon" => -83.00}, "horizon_days" => 240,
-         "schedule" => [{"name" => "Summer", "on" => "Jun 28", "end" => "20:45", "sequences" => ["Christmas"]}]}
-  p = plan(cfg, bridge)
-  assert_empty p.actions
-  assert_equal [[Date.new(2027, 6, 28), "Summer"]], p.skips.map { _1.take(2) }
-  assert_match(/dusk \(21:0\d\) is after its end time/, p.skips[0][2])
-end
+  def test_evening_end_before_dusk_skips_the_night_instead_of_running_all_day
+    # Columbus, OH sunset on Jun 28 is ~21:05; an 20:45 end is before it
+    cfg = {"location" => {"lat" => 39.96, "lon" => -83.00}, "horizon_days" => 240,
+           "schedule" => [{"name" => "Summer", "on" => "Jun 28", "end" => "20:45", "sequences" => ["Christmas"]}]}
+    p = plan(cfg, bridge)
+    assert_empty p.actions
+    assert_equal [[Date.new(2027, 6, 28), "Summer"]], p.skips.map { _1.take(2) }
+    assert_match(/dusk \(21:0\d\) is after its 20:45 end/, p.skips[0][2])
+  end
 
-def test_fixed_times_hold_across_dst_start
+  def test_plan_text_groups_dark_nights_per_rule
+    cfg = {"location" => {"lat" => 39.96, "lon" => -83.00}, "horizon_days" => 240,
+           "schedule" => [{"name" => "Summer", "from" => "Jun 26", "to" => "Jun 28", "end" => "20:45", "sequences" => ["Christmas"]}]}
+    assert_match(/^No show: dusk is after the end time\n    Summer: 3 nights, Jun 26 – Jun 28 \(dusk up to 21:0\d, ends 20:45\)$/,
+                 plan(cfg, bridge).to_s)
+  end
+
+  def test_fixed_times_hold_across_dst_start
     b = bridge
     plan(config([{"name" => "March", "from" => "Mar 13", "to" => "Mar 15", "start" => "18:00", "sequences" => ["Christmas"]}]), b).apply!
     assert_equal [[18, 0]] * 3, b.nights("March").map { [_1.hour, _1.min] }

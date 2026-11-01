@@ -33,20 +33,30 @@ module Everlights
           rows.each { |a| out << "  #{mark[a.op]} #{a.op.to_s.ljust(7)} #{a.name}#{": #{a.detail}" if a.detail}" }
         end
         lost, other = skips.partition { |_, _, why| why.end_with?(" wins this night") }
+        dark, other = other.partition { |_, _, why| why.start_with?("dusk (") }
         unless other.empty?
           out << "Skipped"
           other.each { |d, rule, why| out << "    #{d.strftime("%a %Y-%m-%d")}  #{rule}: #{why}" }
         end
+        unless dark.empty?
+          out << "No show: dusk is after the end time"
+          dark.group_by { _2 }.each do |rule, rows|
+            out << "    #{rule}: #{nights(rows.map(&:first))} (dusk up to #{rows.map { _3[/\d\d:\d\d/] }.max}, ends #{rows[0][2][/(\d\d:\d\d) end/, 1]})"
+          end
+        end
         unless lost.empty?
           out << "Nights taken by a higher rule"
           lost.group_by { |_, rule, why| [rule, why.delete_suffix(" wins this night")] }.each do |(rule, winner), rows|
-            days = rows.map(&:first)
-            span = days.size == 1 ? days[0].strftime("%b %-d") : "#{days[0].strftime("%b %-d")} – #{days[-1].strftime("%b %-d")}"
-            out << "    #{rule}: #{days.size} night#{"s" unless days.size == 1} to #{winner} (#{span})"
+            out << "    #{rule}: #{nights(rows.map(&:first)).sub(", ", " to #{winner} (")})"
           end
         end
         out << "Nothing to change." if empty?
         out.join("\n")
+      end
+
+      def nights(days) # "3 nights, Jun 26 – Jun 28"
+        span = days.size == 1 ? days[0].strftime("%b %-d") : "#{days[0].strftime("%b %-d")} – #{days[-1].strftime("%b %-d")}"
+        "#{days.size} night#{"s" unless days.size == 1}, #{span}"
       end
     end
 
@@ -128,7 +138,7 @@ module Everlights
         losers.each { skips << [d, _1[:name], "#{winner[:name]} wins this night"] }
         s, e = window(winner, d)
         if e.nil?
-          skips << [d, winner[:name], "dusk (#{s.strftime("%H:%M")}) is after its end time"]
+          skips << [d, winner[:name], "dusk (#{s.strftime("%H:%M")}) is after its #{format("%02d:%02d", *winner[:end])} end"]
         elsif s <= @now + MARGIN
           skips << [d, winner[:name], "already started or starts within 15 minutes"]
         elsif (other = others.find { |_, os, oe| os < e && s < oe })
