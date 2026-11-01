@@ -1,0 +1,68 @@
+# Copy to config/everlights.yml (gitignored) and edit. Then:
+#   everlights sync --dry-run   # see the plan
+#   everlights sync             # apply it
+#
+# Sync builds sequences and calendar entries for the next `horizon_days`, only on nights that haven't
+# started yet. It only changes or deletes what it created itself (tracked in config/.sync-state.yml),
+# so shows you make in the EverLights app are left alone.
+
+bridge:
+  host: 192.168.1.50            # EverLights app -> device information. --host / $EVERLIGHTS_HOST override it.
+
+location:                       # for dusk: sunset is calculated per night from this
+  lat: 40.0
+  lon: -83.0
+
+timezone: America/New_York      # optional; defaults to this machine's
+horizon_days: 120               # how far ahead each sync fills the calendar
+
+defaults:                       # any rule can override these
+  start: dusk                   # dusk, dusk+15, dusk-10, or "18:30"
+  end: "23:00"                  # quote times; earlier than start means the next morning
+  seconds: 20                   # how long each sequence plays before the next
+
+sequences:                      # your own; they show up in the app under Personal
+  My Birthday:
+    colors: [FF1E8C, FFC400, 00A8FF, FFFFFF, 9D2BFF, FFC400, 2BFF6A, FFFFFF]
+    effects: {chase: 60, twinkle: 180}   # bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe
+
+# One rule per show. When two rules want the same night, the one higher in this list wins.
+# A rule's "when" is exactly one of:
+#   on:   2027-03-14 | Dec 25 | 4th Thursday of November | last Monday of May | Easter
+#   from: Dec 1 / to: Jan 1          (every night in between, every year)
+#   every: [Friday, Saturday]        (optionally with from:/to: to limit it to a season)
+# sequences: built-in or your own names; "Name:30" plays it for 30 seconds.
+schedule:
+  - name: Christmas Day
+    on: Dec 25
+    sequences: [Christmas, "Candy Cane Lane:30"]
+    end: "01:00"
+
+  - name: Christmas Season
+    from: Dec 1
+    to: Jan 1
+    sequences: [Christmas, Winter]
+
+  - name: Thanksgiving
+    on: 4th Thursday of November
+    sequences: [Thanksgiving]
+
+  - name: Independence Day
+    on: Jul 4
+    sequences: [Independence Day, 4th of July]
+    end: "23:59"
+
+  - name: Easter
+    on: Easter
+    sequences: [Easter]
+
+  - name: Birthday
+    on: 2027-03-14
+    sequences: [My Birthday]
+
+  - name: Fall Weekends
+    every: [Friday, Saturday]
+    from: Sep 15
+    to: Nov 20
+    start: dusk+15
+    sequences: [Fall Wave]

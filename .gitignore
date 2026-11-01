@@ -1,3 +1,4 @@
 *.gem
-# local schedule/sequence preferences, kept private
-config/
+# local config and sync state stay private; the example is shared
+config/*
+!config/everlights.example.yml

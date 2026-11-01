@@ -54,7 +54,18 @@ el.calendar.add "2026-12-31", "New Year", ["New Year's"], start: "20:00", finish
 el.calendar.remove "2026-12-24", "Christmas"
 ```
 
-## Unverified (tell the user if it matters)
+## Sync (planning shows months ahead)
+
+When the user wants a recurring or seasonal plan ("Christmas every December", "Fridays in football season"), edit `config/everlights.yml` rather than adding calendar entries one by one. The format reference is `config/everlights.example.yml`.
+
+1. Edit `sequences:` or `schedule:`. Rules higher in the list win nights they share.
+2. Run `everlights sync --dry-run` and show the user the plan, including the Skipped section.
+3. Run `everlights sync` only after they confirm.
+
+Sync only changes what it created itself. Config problems abort before anything is written; fix every one it lists. Use `--adopt` only when the user says the state file was lost.
+
+## Unverified
+ (tell the user if it matters)
 
 - Whether "dusk" shows really start at dusk. The bridge stores a 17:00 placeholder, so they may start at 17:00. Use `--start` when the exact time matters.
 - What N means for each effect.

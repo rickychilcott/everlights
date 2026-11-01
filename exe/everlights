@@ -30,13 +30,17 @@ USAGE = <<~TXT
                                           default dusk to 23:00, 20s per sequence
     calendar remove DATE NAME
 
+  Sync (config/everlights.yml: sequences + schedule, see config/everlights.example.yml):
+    sync [--dry-run] [--adopt]            build sequences and the calendar ahead; prints the plan
+
   Options:
 TXT
 
 opts = {effects: {}, limit: 365}
 parser = OptionParser.new do |o|
   o.banner = USAGE
-  o.on("--host HOST", "bridge IP (default $EVERLIGHTS_HOST)") { opts[:host] = _1 }
+  o.on("--host HOST", "bridge IP (default $EVERLIGHTS_HOST, then the config's bridge.host)") { opts[:host] = _1 }
+  o.on("--config PATH", "config file (default $EVERLIGHTS_CONFIG, then config/everlights.yml)") { opts[:config] = _1 }
   o.on("--zone SERIAL", "limit set/play/off/clear/show to a zone (repeatable)") { (opts[:zones] ||= []) << _1 }
   o.on("--effect E[=N]", "N 0-255 (default 128): #{Everlights::EFFECTS.join(" ")}") do |e|
     type, value = e.split("=")
@@ -48,6 +52,8 @@ parser = OptionParser.new do |o|
   o.on("--until DATE", "repeat nightly through DATE") { opts[:until] = _1 }
   o.on("--json", "JSON output for lists, show and bridge") { opts[:json] = true }
   o.on("--yes", "confirm bridge reboot") { opts[:yes] = true }
+  o.on("--dry-run", "sync: print the plan only") { opts[:dry_run] = true }
+  o.on("--adopt", "sync: take over bridge items whose names match the config") { opts[:adopt] = true }
 end
 parser.parse!
 abort parser.help if ARGV.empty?
@@ -55,7 +61,12 @@ abort parser.help if ARGV.empty?
 def json(obj) = puts(JSON.pretty_generate(obj))
 
 begin
-  el = Everlights::Client.new(opts[:host])
+  config_path = opts[:config] || ENV["EVERLIGHTS_CONFIG"] || "config/everlights.yml"
+  config = if File.exist?(config_path) then Everlights::Sync.load_config(config_path)
+           elsif opts[:config] || ENV["EVERLIGHTS_CONFIG"] then raise Everlights::Error, "no config at #{config_path}"
+           end
+  ENV["TZ"] = config["timezone"] if config&.dig("timezone")
+  el = Everlights::Client.new(opts[:host] || ENV["EVERLIGHTS_HOST"] || config&.dig("bridge", "host"))
   zones = opts[:zones]
   cmd = ARGV.shift
   cmd = "#{cmd} #{ARGV.shift}" if %w[sequence calendar].include?(cmd) ||
@@ -121,7 +132,7 @@ begin
       seqs.each do |s|
         mark = s["id"].start_with?(Everlights::BUILTIN_PREFIX) ? " " : "*"
         fx = s["effects"].map { "#{_1["effectType"]}=#{_1["value"]}" }.join(" ")
-        puts "#{mark} #{s["alias"].ljust(28)} #{s["pattern"].size.to_s.rjust(3)} colors  #{fx}"
+        puts "#{mark} #{s["alias"].ljust(28)} #{s["pattern"].size.to_s.rjust(3)} color#{"s" unless s["pattern"].size == 1}#{" " if s["pattern"].size == 1}  #{fx}"
       end
     end
   when "sequence add"
@@ -161,6 +172,18 @@ begin
     abort "calendar remove DATE NAME" if name.empty?
     el.calendar.remove(date, name.join(" "))
     puts "removed #{name.join(" ")} on #{date}"
+
+  when "sync"
+    raise Everlights::Error, "no config at #{config_path}; copy config/everlights.example.yml to start" unless config
+    state_path = File.join(File.dirname(config_path), ".sync-state.yml")
+    plan = Everlights::Sync.new(el, config, state_path: state_path, adopt: opts[:adopt]).plan
+    puts plan
+    if plan.empty? then nil
+    elsif opts[:dry_run] then puts "\n(dry run: nothing applied)"
+    else
+      plan.apply!
+      puts "\nApplied."
+    end
 
   else abort parser.help
   end

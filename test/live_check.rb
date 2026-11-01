@@ -67,6 +67,22 @@ begin
   # sequence remove -> list -> gone
   el.sequences.remove(name)
   check.("sequence remove, then not listed", listed_sequence.().nil?)
+
+  # sync: config with a sequence + a rule for tomorrow -> apply -> listed -> re-plan is empty
+  #       -> empty config -> apply -> both gone. Uses a throwaway state file.
+  require "tmpdir"
+  Dir.mktmpdir do |dir|
+    state = File.join(dir, ".sync-state.yml")
+    cfg = {"sequences" => {name => {"colors" => %w[FF00FF 00FFFF], "effects" => {"chase" => 90}}},
+           "schedule" => [{"name" => name, "on" => tomorrow.iso8601, "start" => "18:00", "end" => "18:10",
+                           "sequences" => ["#{name}:30"]}]}
+    Everlights::Sync.new(el, cfg, state_path: state).plan.apply!
+    check.("sync creates sequence, then listed", listed_sequence.()&.dig("pattern") == %w[FF00FF 00FFFF])
+    check.("sync creates calendar entry, then listed", listed_nights.() == [tomorrow])
+    check.("sync again: nothing to change", Everlights::Sync.new(el, cfg, state_path: state).plan.empty?)
+    Everlights::Sync.new(el, {}, state_path: state).plan.apply!
+    check.("sync with it removed from config, then not listed", listed_nights.().empty? && listed_sequence.().nil?)
+  end
 ensure
   el.event_list.select { _1["alias"] == name }.each { el.delete_event(_1["id"]) }
   el.sequence_list.select { _1["alias"] == name }.each { el.delete_sequence(_1["id"]) }

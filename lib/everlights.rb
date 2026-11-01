@@ -90,9 +90,9 @@ module Everlights
         raise(Error, "no sequence named #{name_or_id.inspect}")
     end
 
-    def create_sequence(name, pattern:, effects: {})
+    def create_sequence(name, pattern:, effects: {}, id: SecureRandom.uuid)
       request(Net::HTTP::Post, "/v1/sequences",
-              id: SecureRandom.uuid, alias: name, groups: [PERSONAL_GROUP], colorMode: "rgb",
+              id: id, alias: name, groups: [PERSONAL_GROUP], colorMode: "rgb",
               pattern: colors(pattern), effects: effects_body(effects), lastChanged: stamp(Time.now))
     end
 
@@ -107,9 +107,9 @@ module Everlights
     def event_list = get("/v1/events")
 
     # sequences: [[sequence_id, seconds], ...]  occurrences: [[start_time, end_time], ...]
-    def create_event(name, sequences:, occurrences:, zones: [ALL_ZONES], flags: [])
+    def create_event(name, sequences:, occurrences:, zones: [ALL_ZONES], flags: [], id: SecureRandom.uuid)
       request(Net::HTTP::Post, "/v1/events",
-              id: SecureRandom.uuid, alias: name, group: "User Created",
+              id: id, alias: name, group: "User Created",
               sequences: sequences.map { |id, secs| {sequenceId: id, duration: secs} },
               zoneSerials: zones,
               occurrences: occurrences.map { |s, e| {start: stamp(s), end: stamp(e)} },
@@ -138,25 +138,30 @@ module Everlights
       res.body.to_s.empty? ? nil : JSON.parse(res.body)
     end
 
-    def colors(pattern)
-      pattern.map do |c|
-        hex = c.to_s.delete_prefix("#").upcase
-        raise Error, "bad color #{c.inspect}, want RRGGBB" unless hex.match?(/\A\h{6}\z/)
-        hex
-      end
-    end
-
-    # {chase: 100} or the API's [{"effectType" => "chase", "value" => 100}]
-    def effects_body(effects)
-      effects.map do |e|
-        type, value = e.is_a?(Hash) ? e.values_at("effectType", "value") : e
-        raise Error, "unknown effect #{type}, want one of: #{EFFECTS.join(" ")}" unless EFFECTS.include?(type.to_s)
-        {effectType: type.to_s, value: Integer(value || 128)}
-      end
-    end
-
-    def stamp(t) = (t.is_a?(Time) ? t : Time.parse(t.to_s)).getutc.iso8601(6)
+    def colors(pattern) = Everlights.colors(pattern)
+    def effects_body(effects) = Everlights.effects(effects)
+    def stamp(t) = Everlights.stamp(t)
   end
+
+  # ["#ff0000", ...] -> ["FF0000", ...]
+  def self.colors(pattern)
+    Array(pattern).map do |c|
+      hex = c.to_s.delete_prefix("#").upcase
+      raise Error, "bad color #{c.inspect}, want RRGGBB" unless hex.match?(/\A\h{6}\z/)
+      hex
+    end
+  end
+
+  # {chase: 100} or the API's [{"effectType" => "chase", "value" => 100}] -> API form with string keys
+  def self.effects(effects)
+    (effects || {}).map do |e|
+      type, value = e.is_a?(Hash) ? e.values_at("effectType", "value") : e
+      raise Error, "unknown effect #{type}, want one of: #{EFFECTS.join(" ")}" unless EFFECTS.include?(type.to_s)
+      {"effectType" => type.to_s, "value" => Integer(value || 128)}
+    end
+  end
+
+  def self.stamp(t) = (t.is_a?(Time) ? t : Time.parse(t.to_s)).getutc.iso8601(6)
 
   class Sequences
     def initialize(client) = @c = client
@@ -247,3 +252,5 @@ module Everlights
     def at(d, h_m) = Time.new(d.year, d.month, d.day, *h_m) # wall clock, so DST doesn't shift shows
   end
 end
+
+require_relative "everlights/sync"

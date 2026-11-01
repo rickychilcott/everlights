@@ -51,6 +51,44 @@ everlights calendar remove 2026-12-24 Christmas    # one night
 - **Now commands** (`set`, `play`, `off`): during a running show they only last until its next sequence change.
 - **Bridge upkeep:** `everlights bridge time [TIME]` sets the clock (default now; the bridge normally syncs via NTP). `everlights bridge reboot --yes` restarts it.
 
+## Sync: your year of shows from one file
+
+Describe your own sequences and a schedule once. `everlights sync` then builds them on the bridge for the months ahead:
+
+```sh
+cp config/everlights.example.yml config/everlights.yml   # gitignored; edit the IP, location and schedule
+everlights sync --dry-run                                # print the plan
+everlights sync                                          # apply it
+```
+
+```yaml
+bridge: {host: 192.168.1.50}
+location: {lat: 40.0, lon: -83.0}   # dusk = sunset, calculated per night
+horizon_days: 120
+sequences:
+  My Birthday: {colors: [FF1E8C, FFC400, 00A8FF], effects: {chase: 60, twinkle: 180}}
+schedule:                           # higher in the list wins a shared night
+  - {name: Christmas Day, on: Dec 25, sequences: [Christmas, "Candy Cane Lane:30"], end: "01:00"}
+  - {name: Christmas Season, from: Dec 1, to: Jan 1, sequences: [Christmas, Winter]}
+  - {name: Thanksgiving, on: 4th Thursday of November, sequences: [Thanksgiving]}
+  - {name: Easter, on: Easter, sequences: [Easter]}
+  - {name: Fall Weekends, every: [Friday, Saturday], from: Sep 15, to: Nov 20, start: dusk+15, sequences: [Fall Wave]}
+```
+
+- **When a rule applies:**
+  - `on:` takes a date (`2027-03-14`), a yearly date (`Dec 25`), `Nth Weekday of Month`, `last Monday of May`, or `Easter`.
+  - `from:`/`to:` repeats nightly, every year, and can cross New Year.
+  - `every:` takes weekdays, optionally limited by `from:`/`to:`.
+- **Times:** `start:` is `dusk`, `dusk+15` or `"18:30"`; `end:` defaults to `"23:00"`. An end earlier than the start means the next morning.
+- **Future only:** sync adds only nights that start more than 15 minutes from now. Each rule becomes one calendar entry, and re-running sync rolls the window forward.
+- **Leaves your app-made shows alone:** sync only changes or deletes what it created, tracked in `config/.sync-state.yml`. It skips nights an app-made show already covers, and refuses names that clash with built-ins or app-made items. If the state file is lost, `--adopt` takes back items whose names match the config.
+- **All or nothing:** every config problem is reported before anything is written.
+- **Config location:** `--config` or `$EVERLIGHTS_CONFIG`. The config's `bridge.host` is used by every command unless `--host` or `$EVERLIGHTS_HOST` is set.
+- **Time zone:** set `timezone:` in the config, or it uses your machine's.
+
+To keep the calendar topped up, run it on a schedule, for example monthly from cron:
+`0 9 1 * * cd ~/everlights && everlights sync >> config/sync.log 2>&1`
+
 ## Ruby
 
 ```ruby
@@ -74,6 +112,11 @@ el.calendar.list(limit: 30)  # => [{date:, start:, finish:, dusk:, name:, event_
 el.calendar.add "2026-12-01", "Christmas", {"Candy Cane" => 30, "Christmas" => 20}, through: "2027-01-01"
 el.calendar.add "2026-12-31", "New Year", ["New Year's"], start: "20:00", finish: "01:00"
 el.calendar.remove "2026-12-24", "Christmas"
+
+config = Everlights::Sync.load_config("config/everlights.yml")
+plan = Everlights::Sync.new(el, config, state_path: "config/.sync-state.yml").plan
+puts plan
+plan.apply!
 ```
 
 `Client` also exposes the raw endpoints: `status`, `zones`, `program`, `set_program`, `sequence_list`, `create_event`, `update_event` and so on.
@@ -115,7 +158,7 @@ Observed on the bridge (`ruby -Ilib test/live_check.rb` repeats the round trip):
 ## Development
 
 ```sh
-ruby -Ilib test/everlights_test.rb
+ruby -Ilib -e 'Dir["test/*_test.rb"].each { require "./#{_1}" }'
 ```
 
 The tests run against a fake bridge, so no hardware is needed.
