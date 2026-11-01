@@ -26,6 +26,7 @@ Requires Ruby 3.1+.
 
 ```sh
 everlights bridge                                  # firmware, network, cloud, zone health
+everlights bridge health                           # ok/WARN checks; exits 2 on any warning
 everlights show                                    # what's playing, e.g. "Halloween Fade (Halloween show)"
 
 everlights play "Hallows Eve"                      # a saved sequence, now

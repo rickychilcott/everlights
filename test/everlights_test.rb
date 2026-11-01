@@ -215,6 +215,33 @@ class EverlightsTest < Minitest::Test
     TXT
   end
 
+  def healthy_bridge
+    fresh = (Time.now - 120).utc.iso8601
+    BRIDGE.merge("lastServerCheckin" => fresh, "lastRadioResponse" => fresh, "radioRebootCount" => 0,
+                 "minFreeHeap" => 12376, "resetReason" => 4,
+                 "zones" => [BRIDGE["zones"][0].merge("lastResponseDate" => fresh)])
+  end
+
+  def test_cli_bridge_health
+    out, _, st = cli("bridge", "health", routes: {"GET /v1" => healthy_bridge})
+    assert_equal 0, st.exitstatus
+    assert_equal <<~TXT, out
+      ok    cloud               reachable, checked in 2 min ago
+      ok    clock               ntp on
+      ok    memory              lowest free since boot 12376 bytes (warn under 10000)
+      ok    radio               answered 2 min ago, 0 radio reboots
+      ok    zone z1             active, answered 2 min ago, 9 reboots
+      info  reboots             129 total, last reset reason 4
+    TXT
+  end
+
+  def test_cli_bridge_health_warns_and_exits_2
+    sick = healthy_bridge.merge("serverReachable" => false, "minFreeHeap" => 7200, "network" => {})
+    out, _, st = cli("bridge", "health", routes: {"GET /v1" => sick})
+    assert_equal 2, st.exitstatus
+    assert_equal ["WARN cloud", "WARN clock", "WARN memory"], out.lines.grep(/^WARN/).map { _1.split.take(2).join(" ") }
+  end
+
   def test_cli_bridge_json
     assert_equal({"serial" => "b1"}, JSON.parse(cli!("bridge", "--json")))
   end

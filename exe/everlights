@@ -7,6 +7,7 @@ USAGE = <<~TXT
 
   Bridge:
     bridge                                firmware, network, cloud, zone health
+    bridge health                         ok/WARN per check; exit 2 on any warning (for cron)
     bridge time [TIME]                    set the bridge clock (default now)
     bridge reboot --yes                   restart the bridge
     zones                                 raw zone data (JSON)
@@ -72,7 +73,7 @@ begin
   zones = opts[:zones]
   cmd = ARGV.shift
   cmd = "#{cmd} #{ARGV.shift}" if %w[sequence calendar].include?(cmd) ||
-                                   (cmd == "bridge" && %w[time reboot].include?(ARGV.first))
+                                   (cmd == "bridge" && %w[health time reboot].include?(ARGV.first))
   arg = ARGV.join(" ")
 
   case cmd
@@ -93,6 +94,25 @@ begin
         puts "  last     request #{at.(z["lastRequestDate"])}, response #{at.(z["lastResponseDate"])}, reboots #{z["rebootCount"]}"
       end
     end
+  when "bridge health"
+    # ponytail: thresholds are guesses from one bridge; tune when real failures show what matters
+    b = el.status
+    ago = ->(v) { v ? ((Time.now - Time.parse(v)) / 60).round : Float::INFINITY }
+    mins = ->(m) { m.infinite? ? "never" : "#{m} min ago" }
+    cloud, radio = ago.(b["lastServerCheckin"]), ago.(b["lastRadioResponse"])
+    checks = [
+      [!!b["serverReachable"] && cloud <= 15, "cloud", "#{b["serverReachable"] ? "reachable" : "unreachable"}, checked in #{mins.(cloud)}"],
+      [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"],
+      [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"],
+      [radio <= 10, "radio", "answered #{mins.(radio)}, #{b["radioRebootCount"]} radio reboots"],
+      *b["zones"].map do |z|
+        last = ago.(z["lastResponseDate"])
+        [!!z["active"] && last <= 10, "zone #{z["serial"]}", "#{z["active"] ? "active" : "inactive"}, answered #{mins.(last)}, #{z["rebootCount"]} reboots"]
+      end,
+      [:info, "reboots", "#{b["rebootCount"]} total, last reset reason #{b["resetReason"]}"]
+    ]
+    checks.each { |ok, name, text| puts "#{{info: "info", true => "ok  ", false => "WARN"}[ok]}  #{name.ljust(19)} #{text}" }
+    exit 2 unless checks.all? { _1[0] }
   when "bridge time"
     time = ARGV.empty? ? Time.now : Time.parse(arg)
     el.set_time(time)
