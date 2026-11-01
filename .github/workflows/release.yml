@@ -1,0 +1,36 @@
+# Push a tag matching the gemspec version (e.g. v0.2.0) to publish to RubyGems,
+# GitHub Packages, and a GitHub release with the .gem attached.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # GitHub release
+  id-token: write   # RubyGems trusted publishing
+  packages: write   # GitHub Packages
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ruby
+      - name: Tag matches gemspec version
+        run: test "${GITHUB_REF_NAME#v}" = "$(ruby -e 'print Gem::Specification.load("everlights.gemspec").version')"
+      - run: gem install minitest --conservative
+      - run: ruby -Ilib -e 'Dir["test/*_test.rb"].each { require "./#{_1}" }'
+      - run: gem build everlights.gemspec
+      - uses: rubygems/configure-rubygems-credentials@v1.0.0
+      - name: Push to RubyGems
+        run: gem push everlights-*.gem
+      - name: Push to GitHub Packages
+        run: gem push --host "https://rubygems.pkg.github.com/${GITHUB_REPOSITORY_OWNER}" everlights-*.gem
+        env:
+          GEM_HOST_API_KEY: Bearer ${{ secrets.GITHUB_TOKEN }}
+      - name: GitHub release
+        run: gh release create "$GITHUB_REF_NAME" everlights-*.gem --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -14,6 +14,7 @@ Gem::Specification.new do |s|
   s.metadata = {
     "source_code_uri" => s.homepage,
     "bug_tracker_uri" => "#{s.homepage}/issues",
-    "rubygems_mfa_required" => "true"
+    "rubygems_mfa_required" => "true",
+    "github_repo" => "ssh://github.com/rickychilcott/everlights"
   }
 end

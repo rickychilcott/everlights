@@ -342,6 +342,7 @@ def test_fixed_times_hold_across_dst_start
                                "schedule" => [{"name" => "Fixed", "on" => "Dec 23", "start" => "18:30", "sequences" => ["Christmas"]}]))
     out, err, st = Open3.capture3({"EVERLIGHTS_HOST" => nil, "EVERLIGHTS_CONFIG" => nil},
                                   "ruby", File.expand_path("../exe/everlights", __dir__), "sync", "--dry-run", "--config", path)
+    out = out.dup.force_encoding(Encoding::UTF_8) # CLI prints UTF-8 even under LANG=C
     assert st.success?, err
     assert_match(/\+ create  Fixed: 1 night, Dec 23, 18:30–23:00/, out)
     assert_match(/dry run: nothing applied/, out)
