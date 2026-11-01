@@ -357,6 +357,23 @@ class SyncTest < Minitest::Test
     refute File.exist?(File.join(@dir, ".sync-state.yml"))
   end
 
+  def test_cli_sync_check_exits_2_on_drift_and_0_when_in_sync
+    fake = FakeBridge.new("GET /v1/sequences" => BUILTINS, "GET /v1/events" => [])
+    run = ->(cfg) do
+      File.write(path = File.join(@dir, "everlights.yml"), YAML.dump({"bridge" => {"host" => "127.0.0.1:#{fake.port}"}}.merge(cfg)))
+      out, err, st = Open3.capture3({"EVERLIGHTS_HOST" => nil, "EVERLIGHTS_CONFIG" => nil},
+                                    "ruby", File.expand_path("../exe/everlights", __dir__), "sync", "--check", "--config", path)
+      [out.dup.force_encoding(Encoding::UTF_8), err, st]
+    end
+    out, _, st = run.({"schedule" => [{"name" => "Fixed", "on" => "Dec 23", "start" => "18:30", "sequences" => ["Christmas"]}]})
+    assert_equal 2, st.exitstatus
+    assert_match(/create  Fixed/, out)
+    out, err, st = run.({})
+    assert_equal 0, st.exitstatus, err
+    assert_match(/Nothing to change/, out)
+    assert fake.requests.all? { _1.first == "GET" }, "check must not write"
+  end
+
   def test_cli_sync_without_config_explains
     _, err, st = Open3.capture3({"EVERLIGHTS_HOST" => "127.0.0.1:1", "EVERLIGHTS_CONFIG" => nil},
                                 "ruby", File.expand_path("../exe/everlights", __dir__), "sync", chdir: @dir)

@@ -32,6 +32,7 @@ USAGE = <<~TXT
 
   Sync (config/everlights.yml: sequences + schedule, see config/everlights.example.yml):
     sync [--dry-run] [--adopt]            build sequences and the calendar ahead; prints the plan
+    sync --check                          plan only; exit 2 if the bridge needs a sync (for cron)
 
   Options:
 TXT
@@ -53,6 +54,7 @@ parser = OptionParser.new do |o|
   o.on("--json", "JSON output for lists, show and bridge") { opts[:json] = true }
   o.on("--yes", "confirm bridge reboot") { opts[:yes] = true }
   o.on("--dry-run", "sync: print the plan only") { opts[:dry_run] = true }
+  o.on("--check", "sync: plan only, exit 2 if anything would change") { opts[:check] = true }
   o.on("--adopt", "sync: take over bridge items whose names match the config") { opts[:adopt] = true }
 end
 parser.parse!
@@ -179,6 +181,7 @@ begin
     plan = Everlights::Sync.new(el, config, state_path: state_path, adopt: opts[:adopt]).plan
     puts plan
     if plan.empty? then nil
+    elsif opts[:check] then exit 2
     elsif opts[:dry_run] then puts "\n(dry run: nothing applied)"
     else
       plan.apply!

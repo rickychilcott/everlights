@@ -89,6 +89,8 @@ schedule:                           # higher in the list wins a shared night
 To keep the calendar topped up, run it on a schedule, for example monthly from cron:
 `0 9 1 * * cd ~/everlights && everlights sync >> config/sync.log 2>&1`
 
+To only be told when it needs a sync, use `everlights sync --check`. It prints the plan and changes nothing. It exits 0 when the bridge matches the config, 2 when it needs a sync, and 1 on an error.
+
 ## Ruby
 
 ```ruby
