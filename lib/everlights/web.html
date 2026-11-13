@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EverLights schedule</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23ffb547%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --dusk: #1c2340;   /* page: the sky when shows start */
+  --night: #141a30;  /* panels */
+  --wire: #3b4373;   /* lines, unlit bulbs */
+  --frost: #ecebf6;  /* text */
+  --haze: #a3a6cc;   /* secondary text */
+  --ember: #ffb547;  /* the one action color: apply */
+  --alarm: #ff8a80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--dusk); color: var(--frost);
+  font: 15px/1.45 "Bricolage Grotesque", system-ui, sans-serif; font-variant-numeric: tabular-nums;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.muted { color: var(--haze); }
+
+header {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+  padding: 14px clamp(16px, 4vw, 40px); background: color-mix(in srgb, var(--dusk) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--wire);
+}
+h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+h1 small { font-weight: 400; font-size: 14px; color: var(--haze); margin-left: 8px; }
+.status { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.status .saved { color: var(--haze); font-size: 13px; }
+.btn { border: 1px solid var(--wire); background: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--haze); }
+.previewing { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.previewing::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 8px var(--ember); }
+.apply { background: var(--ember); color: #2a1a00; border-color: var(--ember); font-weight: 700; }
+.apply:disabled { background: none; color: var(--haze); border-color: var(--wire); font-weight: 400; cursor: default; }
+.review { width: 100%; margin: 0; padding: 10px 0 0; list-style: none; font-size: 14px; display: grid; gap: 2px; }
+.review b { display: inline-block; width: 64px; font-weight: 500; }
+.op-create b { color: #9be89b; } .op-delete b { color: var(--alarm); } .op-update b { color: var(--ember); }
+.problems { width: 100%; color: var(--alarm); margin: 0; padding-left: 18px; font-size: 14px; }
+
+main { padding: 24px clamp(16px, 4vw, 40px) 80px; max-width: 1400px; margin: 0 auto; }
+h2 { font-size: 17px; font-weight: 500; margin: 0 0 4px; }
+h2 + p { margin: 0 0 14px; color: var(--haze); font-size: 14px; }
+
+/* The calendar: each month is a light string, each night a bulb lit with that night's sequence. */
+.strings { overflow-x: auto; padding-bottom: 4px; }
+.string { display: grid; grid-template-columns: 76px repeat(31, 22px); align-items: center; height: 30px; min-width: max-content; position: relative; }
+.string::before { content: ""; position: absolute; left: 76px; right: 0; top: 50%; border-top: 1px solid var(--wire); }
+.string .m { color: var(--haze); font-size: 13px; }
+.bulb {
+  width: 13px; height: 13px; border-radius: 50%; justify-self: center; position: relative; z-index: 1;
+  border: 1px solid var(--wire); background: var(--dusk); cursor: pointer; transition: opacity .15s;
+}
+.bulb.lit { border: 0; box-shadow: 0 0 9px -1px var(--glow); }
+.bulb.note { background: repeating-linear-gradient(45deg, var(--wire) 0 2px, var(--dusk) 2px 4px); }
+.bulb.today { outline: 1px solid var(--frost); outline-offset: 3px; }
+.bulb.weekend { width: 15px; height: 15px; }
+.strings.focus .bulb:not(.hit) { opacity: .18; }
+.readout { min-height: 22px; font-size: 14px; margin: 8px 0 0; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 40px; margin-top: 36px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.toolbar { display: flex; gap: 8px; align-items: baseline; margin-bottom: 12px; }
+.toolbar h2 { margin-right: auto; }
+
+/* Rules */
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rule { background: var(--night); border: 1px solid transparent; border-radius: 8px; }
+.rule.drop-before { box-shadow: 0 -3px 0 var(--ember); }
+.rule.drop-after { box-shadow: 0 3px 0 var(--ember); }
+.rule.dragging { opacity: .4; }
+.rule.open { border-color: var(--wire); }
+.rule-head { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px 8px 4px; }
+.grip { cursor: grab; border: 0; background: none; color: var(--haze); padding: 4px; line-height: 1; letter-spacing: -2px; }
+.rule-title { border: 0; background: none; text-align: left; padding: 0; cursor: pointer; }
+.rule-title strong { font-weight: 500; }
+.rule-title span { color: var(--haze); font-size: 13px; margin-left: 8px; }
+.rule-body { padding: 4px 14px 14px 36px; display: grid; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 30px; padding: 0 10px 8px 36px; }
+.rule.open .chips { padding-bottom: 0; }
+.rule.over { border-color: var(--ember); border-style: dashed; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--wire); border-radius: 999px;
+  padding: 2px 4px 2px 3px; font-size: 13px; cursor: grab; background: var(--dusk);
+}
+.chip .sw { width: 22px; height: 14px; border-radius: 999px; }
+.chip input { width: 3.2em; border: 0; background: none; color: var(--haze); text-align: right; padding: 0; }
+.chip .x { border: 0; background: none; color: var(--haze); cursor: pointer; padding: 0 4px; }
+.add-seq { border: 1px dashed var(--wire); border-radius: 999px; background: none; padding: 2px 10px; width: 150px; font-size: 13px; }
+.field { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; font-size: 14px; }
+.field > span { color: var(--haze); }
+.field input[type=text], .field select, .seq-name {
+  background: var(--dusk); border: 1px solid var(--wire); border-radius: 6px; padding: 5px 8px; width: 100%;
+}
+.pair { display: flex; gap: 8px; align-items: center; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; }
+.days label { position: relative; }
+.days input { position: absolute; opacity: 0; }
+.days span { display: inline-block; padding: 3px 8px; border: 1px solid var(--wire); border-radius: 6px; font-size: 13px; cursor: pointer; }
+.days input:checked + span { background: var(--wire); }
+.days input:focus-visible + span { outline: 2px solid var(--ember); }
+.remove { justify-self: start; border: 0; background: none; color: var(--alarm); cursor: pointer; padding: 0; font-size: 13px; }
+
+/* Sequences */
+.seqs { display: grid; gap: 10px; }
+.seq { background: var(--night); border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
+.seq-top { display: flex; gap: 8px; align-items: center; }
+.seq-name { font-weight: 500; }
+.bulbs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.swatch { position: relative; }
+.swatch input { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.swatch input::-webkit-color-swatch-wrapper { padding: 0; }
+.swatch input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.swatch input::-moz-color-swatch { border: 0; border-radius: 50%; }
+.swatch .x { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; border: 0; padding: 0;
+  font-size: 11px; line-height: 16px; background: var(--wire); cursor: pointer; display: none; }
+.swatch:hover .x, .swatch:focus-within .x { display: block; }
+.plus { width: 28px; height: 28px; border-radius: 50%; border: 1px dashed var(--wire); background: none; cursor: pointer; color: var(--haze); }
+.fx { display: grid; grid-template-columns: 120px 1fr 34px 20px; gap: 8px; align-items: center; font-size: 14px; }
+.fx select { background: var(--dusk); border: 1px solid var(--wire); border-radius: 6px; padding: 3px 6px; }
+.fx input[type=range] { accent-color: var(--ember); }
+.fx .x { border: 0; background: none; color: var(--haze); cursor: pointer; }
+.seqs.cards { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+.seq-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.seq-actions .btn { padding: 4px 10px; font-size: 14px; }
+.btn.save { border-color: var(--ember); color: var(--ember); }
+.btn:disabled { opacity: .45; cursor: default; }
+.dirty { color: var(--ember); font-size: 13px; }
+.readonly .bulbs span { width: 22px; height: 22px; border-radius: 50%; }
+.palette { margin-top: 28px; }
+.palette input[type=search] { background: var(--night); border: 1px solid var(--wire); border-radius: 6px; padding: 5px 8px; width: 100%; margin-bottom: 10px; }
+.palette .chips { padding: 0; }
+aside .chips { max-height: 60vh; overflow-y: auto; }
+.chip.on { border-color: var(--ember); }
+
+/* Views */
+.tabs { display: flex; gap: 4px; }
+.tabs a { color: var(--haze); text-decoration: none; padding: 5px 12px; border-radius: 6px; }
+.tabs a[aria-current=page] { color: var(--frost); background: var(--night); }
+body:not([data-view=sequences]) #view-sequences, body:not([data-view=bridge]) #view-bridge,
+body:not([data-view=calendar]) #view-calendar { display: none; }
+
+/* Bridge */
+.checks { list-style: none; margin: 0 0 32px; padding: 0; display: grid; gap: 6px; }
+.checks li { display: grid; grid-template-columns: 14px 170px 1fr; gap: 10px; align-items: baseline; }
+.checks li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--wire); align-self: center; }
+.checks .ok::before { background: #9be89b; border: 0; box-shadow: 0 0 7px #9be89b; }
+.checks .warn::before { background: var(--alarm); border: 0; box-shadow: 0 0 7px var(--alarm); }
+.checks .warn { color: var(--alarm); }
+.panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.panel { background: var(--night); border-radius: 8px; padding: 14px 16px; }
+.panel h3 { font-size: 15px; font-weight: 500; margin: 0 0 10px; }
+.panel dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.panel dt { color: var(--haze); }
+.panel dd { margin: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn.danger { border-color: var(--alarm); color: var(--alarm); }
+details { margin-top: 24px; font-size: 13px; }
+details pre { background: var(--night); padding: 12px; border-radius: 8px; overflow-x: auto; }
+
+/* Hover card for any sequence chip */
+.pop {
+  position: absolute; z-index: 10; width: min(380px, calc(100vw - 32px)); background: var(--night);
+  border: 1px solid var(--wire); border-radius: 10px; box-shadow: 0 12px 32px rgb(5 8 20 / .55);
+}
+.pop .seq { background: none; }
+.error { color: var(--alarm); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>EverLights <small id="where"></small></h1>
+  <nav class="tabs" aria-label="Views"><a href="#calendar" id="tab-calendar">Calendar</a><a href="#sequences" id="tab-sequences">Sequences</a><a href="#bridge" id="tab-bridge">Bridge</a></nav>
+  <div class="status">
+    <span class="previewing" id="previewing" hidden><span id="preview-name"></span> is on the lights <button class="btn" id="stop-preview">Stop preview</button></span>
+    <span class="saved" id="saved" aria-live="polite">Reading the bridge…</span>
+    <button class="btn" id="review-btn" aria-expanded="false" hidden>Review</button>
+    <button class="btn apply" id="apply" disabled>Apply</button>
+  </div>
+  <ul class="review" id="review" hidden></ul>
+  <ul class="problems" id="problems" hidden></ul>
+</header>
+
+<main>
+  <div id="view-calendar">
+    <section aria-labelledby="cal-h">
+      <h2 id="cal-h">Nights ahead</h2>
+      <p>Each bulb is one night, lit with the sequence that plays. Striped bulbs have no show; hover for why.</p>
+      <div class="strings" id="strings"></div>
+      <p class="readout" id="readout" aria-live="polite"></p>
+    </section>
+
+    <div class="cols">
+      <section aria-labelledby="rules-h">
+        <div class="toolbar"><h2 id="rules-h">Schedule</h2><button class="btn" id="new-rule">New rule</button></div>
+        <p class="muted" style="margin:-6px 0 14px;font-size:14px">Higher rules win shared nights. Drag the handle to reorder, or focus it and use the arrow keys. Drag sequences onto a rule to add them; hover one to see, edit or preview it.</p>
+        <ol class="rules" id="rules"></ol>
+      </section>
+      <aside class="palette" style="margin-top:0" aria-labelledby="side-h">
+        <h2 id="side-h">Sequences</h2>
+        <p>Yours first, then the bridge's.</p>
+        <input type="search" id="side-filter" placeholder="Filter" aria-label="Filter sequences">
+        <div class="chips" id="side"></div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="view-sequences">
+    <div class="toolbar"><h2>Your sequences</h2><button class="btn" id="new-seq">New sequence</button></div>
+    <div class="seqs cards" id="seqs"></div>
+    <div class="palette">
+      <h2>On the bridge</h2>
+      <p>Built-ins and app-made sequences. Hover one to preview it or copy it into yours.</p>
+      <input type="search" id="filter" placeholder="Filter" aria-label="Filter bridge sequences">
+      <div class="chips" id="palette"></div>
+    </div>
+  </div>
+
+  <div id="view-bridge">
+    <div class="toolbar">
+      <h2>Health</h2>
+      <div class="actions">
+        <span class="muted" id="bridge-at" aria-live="polite"></span>
+        <button class="btn" id="bridge-refresh">Refresh</button>
+        <button class="btn" id="bridge-time" title="The bridge normally keeps time over NTP">Set clock to now</button>
+        <button class="btn danger" id="bridge-reboot">Reboot</button>
+      </div>
+    </div>
+    <ul class="checks" id="checks"></ul>
+    <div class="panels" id="panels"></div>
+    <details><summary class="muted">Everything the bridge reports</summary><pre id="raw"></pre></details>
+  </div>
+</main>
+<div class="pop" id="pop" role="dialog" aria-label="Sequence" hidden></div>
+<datalist id="seq-names"></datalist>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+let S = null;          // last state from the server
+let cfg = null;        // the config being edited
+let open = new Set();  // expanded rule names
+
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "style") n.style.cssText = v;
+    else if (k in n && k !== "list") n[k] = v;
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  n.append(...kids.flat().filter((k) => k != null && k !== false));
+  return n;
+}
+
+// --- sequences and colors ---
+const parseRef = (ref) => { const m = String(ref).match(/^(.*?):(\d+)$/); return m ? [m[1].trim(), m[2]] : [String(ref).trim(), ""]; };
+function colorsOf(name) {
+  const lower = name.toLowerCase();
+  const own = Object.entries(cfg.sequences || {}).find(([n]) => n.toLowerCase() === lower);
+  if (own) return (own[1]?.colors || []).map(String);
+  return S.bridge_sequences.find((s) => s.name.toLowerCase() === lower)?.colors || [];
+}
+const hex = (c) => "#" + String(c).replace(/^#/, "");
+function stripe(colors) {
+  if (!colors.length) return "transparent";
+  if (colors.length === 1) return hex(colors[0]);
+  const w = 100 / colors.length;
+  return `linear-gradient(90deg, ${colors.map((c, i) => `${hex(c)} ${i * w}% ${(i + 1) * w}%`).join(", ")})`;
+}
+function wheel(colors) {
+  if (colors.length < 2) return hex(colors[0] || "000000");
+  const w = 360 / colors.length;
+  return `conic-gradient(${colors.map((c, i) => `${hex(c)} ${i * w}deg ${(i + 1) * w}deg`).join(", ")})`;
+}
+const ruleColors = (rule) => colorsOf(parseRef((rule?.sequences || [])[0] || "")[0]);
+
+// --- the calendar ---
+const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+function renderStrings() {
+  const box = $("strings"); box.replaceChildren();
+  const today = new Date(S.today + "T12:00");
+  const last = new Date(today); last.setDate(last.getDate() + S.horizon);
+  const rules = Object.fromEntries((cfg.schedule || []).map((r) => [r.name, r]));
+  for (let m = new Date(today.getFullYear(), today.getMonth(), 1); m <= last; m.setMonth(m.getMonth() + 1)) {
+    const row = el("div", { className: "string" }, el("span", { className: "m" }, m.toLocaleDateString(undefined, m.getMonth() === 0 || +m === +new Date(today.getFullYear(), today.getMonth(), 1) ? { month: "short", year: "numeric" } : { month: "short" })));
+    const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const date = new Date(m.getFullYear(), m.getMonth(), d, 12);
+      const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      if (date < today || date > last) { row.append(el("span")); continue; }
+      const n = S.nights?.[iso];
+      const colors = n && !n.note ? ruleColors(rules[n.rule]) : [];
+      const text = !n ? `${fmtDay(date)}: no rule` : n.note ? `${fmtDay(date)}: ${n.rule}, no show (${n.note})`
+        : `${fmtDay(date)}: ${n.rule}, ${n.start}–${n.end}${rules[n.rule] ? ", " + rules[n.rule].sequences.map((s) => parseRef(s)[0]).join(", ") : ""}`;
+      const bulb = el("span", {
+        className: `bulb${colors.length ? " lit" : ""}${n?.note ? " note" : ""}${iso === S.today ? " today" : ""}${[0, 6].includes(date.getDay()) ? " weekend" : ""}`,
+        title: text, "data-rule": n?.rule,
+        onmouseenter: () => ($("readout").textContent = text),
+        onclick: () => n && focusRule(n.rule),
+      });
+      if (colors.length) { bulb.style.background = wheel(colors); bulb.style.setProperty("--glow", hex(colors[0])); }
+      row.append(bulb);
+    }
+    box.append(row);
+  }
+}
+function highlight(name) {
+  $("strings").classList.toggle("focus", !!name);
+  for (const b of $("strings").querySelectorAll(".bulb")) b.classList.toggle("hit", b.dataset.rule === name);
+}
+function focusRule(name) {
+  open.add(name); renderRules();
+  document.querySelector(`[data-name="${CSS.escape(name)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// --- rules ---
+function when(r) {
+  if (r.on != null) return String(r.on);
+  const span = r.from != null ? `${r.from} to ${r.to}` : "all year";
+  const ev = r.every ? [].concat(r.every) : null;
+  return ev && ev.length < 7 ? `${ev.join(", ")}, ${span}` : `nightly, ${span}`;
+}
+function times(r) {
+  const d = cfg.defaults || {};
+  return `${r.start ?? d.start ?? "dusk"}–${r.end ?? d.end ?? "23:00"}`;
+}
+let drag = null; // {type: "rule", i} | {type: "seq", name, from?: [ruleIndex, chipIndex]}
+
+function chip(ref, ri, ci) {
+  const [name, secs] = parseRef(ref);
+  const r = cfg.schedule[ri];
+  return el("span", {
+    className: "chip", draggable: true, "data-ci": ci, "data-pop": name, tabindex: 0,
+    // r.sequences[ci], not ref: the seconds may have changed since this chip was drawn
+    ondragstart: (e) => { drag = { type: "seq", name: r.sequences[ci], from: [ri, ci] }; e.dataTransfer.setData("text/plain", name); e.stopPropagation(); closePop(); },
+  },
+    el("span", { className: "sw", style: `background:${stripe(colorsOf(name))}` }),
+    name,
+    el("input", { type: "number", min: 1, value: secs, placeholder: String(cfg.defaults?.seconds ?? 20), "aria-label": `${name} seconds`,
+      title: "Seconds per pass; blank uses the default",
+      onchange: (e) => { r.sequences[ci] = e.target.value ? `${name}:${e.target.value}` : name; save(); } }),
+    el("button", { className: "x", "aria-label": `Remove ${name} from ${r.name}`, onclick: () => { r.sequences.splice(ci, 1); save(true); } }, "×"),
+  );
+}
+
+function chipZone(r, ri) {
+  return el("div", { className: "chips" }, (r.sequences || []).map((ref, ci) => chip(ref, ri, ci)),
+    el("input", { className: "add-seq", list: "seq-names", placeholder: "Add sequence", "aria-label": `Add a sequence to ${r.name}`,
+      onchange: (e) => { const v = e.target.value.trim(); if (v) { (r.sequences ||= []).push(v); save(true); } } }));
+}
+
+// a sequence dropped anywhere on a rule: before the chip it lands on, else at the end
+function dropSeq(e, r, ri) {
+  const target = e.target.closest(".chip[data-ci]");
+  let at = target ? +target.dataset.ci : (r.sequences || []).length;
+  if (drag.from) {
+    const [fr, fc] = drag.from;
+    cfg.schedule[fr].sequences.splice(fc, 1);
+    if (fr === ri && fc < at) at--;
+  }
+  (r.sequences ||= []).splice(at, 0, drag.name);
+  drag = null; save(true);
+}
+
+function field(label, ...kids) { return el("label", { className: "field" }, el("span", {}, label), ...kids); }
+function text(obj, key, attrs = {}) {
+  return el("input", { type: "text", value: obj[key] ?? "", ...attrs,
+    onchange: (e) => { const v = e.target.value.trim(); v ? (obj[key] = v) : delete obj[key]; save(); } });
+}
+
+function ruleBody(r, ri) {
+  const once = r.on != null;
+  const every = r.every ? [].concat(r.every).map((d) => DAYS.find((x) => x.toLowerCase() === String(d).slice(0, 3).toLowerCase())) : DAYS;
+  const setDays = (days) => {
+    if (days.length === 7 && r.from != null) delete r.every; else r.every = days;
+    save();
+  };
+  const d = cfg.defaults || {};
+  return el("div", { className: "rule-body" },
+    field("Name", el("input", { type: "text", value: r.name, onchange: (e) => {
+      const was = r.name; r.name = e.target.value.trim() || was;
+      if (open.delete(was)) open.add(r.name);
+      save(true);
+    } })),
+    field("When", el("select", { onchange: (e) => {
+      if (e.target.value === "on") { delete r.from; delete r.to; delete r.every; r.on = "Dec 25"; }
+      else { delete r.on; r.every = DAYS.slice(); }
+      save(true);
+    } }, el("option", { value: "on", selected: once }, "One night a year"), el("option", { value: "span", selected: !once }, "Several nights"))),
+    once ? field("Date", text(r, "on", { placeholder: "Dec 25, Easter-2, 4th Thursday of November" }))
+      : [
+        field("From", el("div", { className: "pair" },
+          text(r, "from", { placeholder: "Dec 1", "aria-label": "From" }), el("span", { className: "muted" }, "to"),
+          text(r, "to", { placeholder: "Jan 6", "aria-label": "To" }))),
+        el("div", { className: "field" }, el("span", {}, "Nights"), el("div", { className: "days" }, DAYS.map((day) =>
+          el("label", {}, el("input", { type: "checkbox", checked: every.includes(day),
+            // read the boxes, not `every`: a save that keeps focus doesn't redraw this rule
+            onchange: (e) => { const boxes = e.target.closest(".days").querySelectorAll("input"); setDays(DAYS.filter((_, i) => boxes[i].checked)); } }), el("span", {}, day))))),
+      ],
+    field("Starts", text(r, "start", { placeholder: `${d.start ?? "dusk"} (default); dusk+15 or 18:30` })),
+    field("Ends", text(r, "end", { placeholder: `${d.end ?? "23:00"} (default)` })),
+    el("button", { className: "remove", onclick: () => { cfg.schedule.splice(ri, 1); save(true); } }, `Remove ${r.name}`),
+  );
+}
+
+function moveRule(from, to) {
+  const [r] = cfg.schedule.splice(from, 1);
+  cfg.schedule.splice(to, 0, r);
+  save(true);
+  requestAnimationFrame(() => document.querySelector(`[data-name="${CSS.escape(r.name)}"] .grip`)?.focus());
+}
+
+function renderRules() {
+  const list = $("rules");
+  list.replaceChildren(...(cfg.schedule || []).map((r, ri) => {
+    const isOpen = open.has(r.name);
+    const li = el("li", { className: `rule${isOpen ? " open" : ""}`, "data-name": r.name,
+      onmouseenter: () => highlight(r.name), onmouseleave: () => highlight(null),
+      ondragover: (e) => {
+        if (drag?.type === "seq") { e.preventDefault(); li.classList.add("over"); return; }
+        if (drag?.type !== "rule") return;
+        e.preventDefault();
+        const box = li.getBoundingClientRect(), after = e.clientY > box.top + box.height / 2;
+        li.classList.toggle("drop-after", after); li.classList.toggle("drop-before", !after);
+      },
+      ondragleave: (e) => { if (!li.contains(e.relatedTarget)) li.classList.remove("drop-before", "drop-after", "over"); },
+      ondrop: (e) => {
+        li.classList.remove("over");
+        if (drag?.type === "seq") { e.preventDefault(); return dropSeq(e, r, ri); }
+        if (drag?.type !== "rule") return;
+        e.preventDefault();
+        const after = li.classList.contains("drop-after");
+        li.classList.remove("drop-before", "drop-after");
+        let to = ri + (after ? 1 : 0);
+        if (drag.i < to) to--;
+        if (to !== drag.i) moveRule(drag.i, to);
+        drag = null;
+      },
+    },
+      el("div", { className: "rule-head" },
+        el("button", { className: "grip", draggable: true, "aria-label": `Move ${r.name}; arrow keys reorder`, title: "Drag to reorder",
+          ondragstart: (e) => { drag = { type: "rule", i: ri }; e.dataTransfer.setData("text/plain", r.name); li.classList.add("dragging"); },
+          ondragend: () => li.classList.remove("dragging"),
+          onkeydown: (e) => {
+            if (e.key === "ArrowUp" && ri > 0) { e.preventDefault(); moveRule(ri, ri - 1); }
+            if (e.key === "ArrowDown" && ri < cfg.schedule.length - 1) { e.preventDefault(); moveRule(ri, ri + 1); }
+          } }, "⋮⋮"),
+        el("button", { className: "rule-title", "aria-expanded": String(isOpen),
+          onclick: () => { isOpen ? open.delete(r.name) : open.add(r.name); renderRules(); } },
+          el("strong", {}, r.name), el("span", {}, `${when(r)}, ${times(r)}`)),
+        el("span", { className: "sw", "aria-hidden": "true", style: `width:22px;height:14px;border-radius:999px;background:${stripe(ruleColors(r))}` }),
+      ),
+      chipZone(r, ri),
+      isOpen && ruleBody(r, ri),
+    );
+    return li;
+  }));
+}
+
+// --- sequences: one editor for the cards and the hover card. Edits are a draft until Save. ---
+const drafts = new Map(); // name -> {name, colors, effects}
+const own = (name) => Object.keys(cfg.sequences).find((n) => n.toLowerCase() === name.toLowerCase());
+const bridgeSeq = (name) => S.bridge_sequences.find((s) => s.name.toLowerCase() === name.toLowerCase());
+const asSpec = (d) => ({ colors: d.colors, ...(Object.keys(d.effects || {}).length ? { effects: d.effects } : {}) });
+const savedDraft = (name) => { const s = cfg.sequences[name] || {}; return { name, colors: [...(s.colors || [])], effects: { ...(s.effects || {}) } }; }; // `Name:` with no value is null
+const draftOf = (name) => drafts.get(name) || savedDraft(name);
+const isDirty = (name) => drafts.has(name) && JSON.stringify(drafts.get(name)) !== JSON.stringify(savedDraft(name));
+
+function renameSeq(old, name) {
+  if (!name || name === old) return;
+  cfg.sequences = Object.fromEntries(Object.entries(cfg.sequences).map(([k, v]) => [k === old ? name : k, v]));
+  for (const r of cfg.schedule || []) {
+    r.sequences = (r.sequences || []).map((ref) => {
+      const [n, secs] = parseRef(ref);
+      return n.toLowerCase() === old.toLowerCase() ? (secs ? `${name}:${secs}` : name) : ref;
+    });
+  }
+}
+
+function saveSeq(name) {
+  const d = drafts.get(name);
+  if (!d) return;
+  const to = d.name.trim() || name;
+  if (to !== name && own(to)) return renderStatus(`There's already a sequence called ${to}`);
+  cfg.sequences[name] = asSpec(d);
+  renameSeq(name, to);
+  drafts.delete(name);
+  if (preview?.name === name) preview.name = to;
+  if (pop.name === name) pop.name = to;
+  save(true);
+}
+
+function previewButton(name, spec, isOwn) {
+  const on = preview?.name === name;
+  return el("button", { className: "btn", "aria-pressed": String(on), onclick: () => (on ? stopPreview() : startPreview(name, spec, isOwn)) },
+    on ? "Stop preview" : "Preview");
+}
+
+// an own sequence; redraws itself in place as the draft changes
+function seqEditor(name, { card = false } = {}) {
+  const d = draftOf(name);
+  const box = el("div", { className: "seq", "data-seq": name });
+  const changed = (redraw = true) => {
+    drafts.set(name, d);
+    if (preview?.name === name && preview.sent !== JSON.stringify(asSpec(d))) startPreview(name, asSpec(d)); // edits show on the lights
+    if (redraw) box.replaceWith(seqEditor(name, { card }));
+  };
+  const fx = Object.entries(d.effects);
+  const setFx = () => { d.effects = Object.fromEntries(fx); changed(); };
+  const dirty = isDirty(name);
+  box.append(...[
+    el("div", { className: "seq-top" },
+      el("span", { className: "chip", draggable: true, title: "Drag onto a rule", "aria-hidden": "true",
+        ondragstart: (e) => { drag = { type: "seq", name }; e.dataTransfer.setData("text/plain", name); closePop(); } },
+        el("span", { className: "sw", style: `background:${stripe(d.colors)}` })),
+      el("input", { className: "seq-name", type: "text", value: d.name, "aria-label": "Sequence name",
+        onchange: (e) => { d.name = e.target.value; changed(); } }),
+    ),
+    el("div", { className: "bulbs" },
+      d.colors.map((c, i) => el("span", { className: "swatch" },
+        el("input", { type: "color", value: hex(c).toLowerCase(), "aria-label": `${name} color ${i + 1}`,
+          oninput: (e) => { d.colors[i] = e.target.value.slice(1).toUpperCase(); box.querySelector(".sw").style.background = stripe(d.colors); },
+          onchange: (e) => { d.colors[i] = e.target.value.slice(1).toUpperCase(); changed(); } }),
+        d.colors.length > 1 && el("button", { className: "x", "aria-label": `Remove ${name} color ${i + 1}`,
+          onclick: () => { d.colors.splice(i, 1); changed(); } }, "×"))),
+      el("button", { className: "plus", "aria-label": `Add a color to ${name}`, title: "Add a color",
+        onclick: () => { d.colors.push(d.colors.at(-1) || "FFFFFF"); changed(); } }, "+"),
+    ),
+    fx.map(([type, value], i) => el("div", { className: "fx" },
+      el("select", { "aria-label": "Effect", onchange: (e) => { fx[i][0] = e.target.value; setFx(); } },
+        S.effects.map((t) => el("option", { value: t, selected: t === type }, t))),
+      el("input", { type: "range", min: 0, max: 255, value, "aria-label": `${type} strength`,
+        oninput: (e) => (e.target.nextSibling.textContent = e.target.value),
+        onchange: (e) => { fx[i][1] = +e.target.value; setFx(); } }),
+      el("span", { className: "muted" }, String(value)),
+      el("button", { className: "x", "aria-label": `Remove ${type}`, onclick: () => { fx.splice(i, 1); setFx(); } }, "×"),
+    )),
+    el("button", { className: "remove", style: "color:var(--haze)",
+      onclick: () => { const t = S.effects.find((t) => !fx.some(([x]) => x === t)); if (t) { fx.push([t, 128]); setFx(); } } }, "Add effect"),
+    el("div", { className: "seq-actions" },
+      el("button", { className: "btn save", disabled: !dirty, onclick: () => saveSeq(name) }, "Save"),
+      dirty && el("button", { className: "btn", onclick: () => { drafts.delete(name); box.replaceWith(seqEditor(name, { card })); } }, "Revert"),
+      previewButton(name, asSpec(d), true),
+      dirty && el("span", { className: "dirty" }, "Not saved"),
+      card && el("button", { className: "btn", style: "margin-left:auto", onclick: () => { delete cfg.sequences[name]; drafts.delete(name); save(true); } }, "Delete"),
+    ),
+  ].flat());
+  return box;
+}
+
+// a bridge sequence: look, preview, or copy into yours
+function bridgeCard(s) {
+  const effects = Object.fromEntries((s.effects || []).map((e) => [e.effectType, e.value]));
+  return el("div", { className: "seq readonly" },
+    el("div", { className: "seq-top" }, el("strong", {}, s.name), el("span", { className: "muted" }, s.builtin ? "built in" : "made in the app")),
+    el("div", { className: "bulbs" }, s.colors.map((c) => el("span", { style: `background:${hex(c)}` }))),
+    Object.keys(effects).length ? el("div", { className: "muted" }, Object.entries(effects).map(([t, v]) => `${t} ${v}`).join(", ")) : null,
+    el("div", { className: "seq-actions" },
+      previewButton(s.name, { colors: s.colors, effects: s.effects }, false),
+      el("button", { className: "btn", onclick: () => {
+        let name = `${s.name} (mine)`, n = 2;
+        while (own(name)) name = `${s.name} (mine ${n++})`;
+        cfg.sequences[name] = asSpec({ colors: [...s.colors], effects });
+        save(true); openPop(name, pop.anchor, true);
+      } }, "Copy to mine")),
+  );
+}
+
+function renderSeqs() {
+  $("seqs").replaceChildren(...Object.keys(cfg.sequences).map((name) => seqEditor(name, { card: true })));
+}
+
+// chip for the sidebar and bridge list: drag onto a rule, hover or click for its card
+function seqChip(name, colors) {
+  return el("span", { className: `chip${preview?.name === name ? " on" : ""}`, draggable: true, tabindex: 0, "data-pop": name,
+    ondragstart: (e) => { drag = { type: "seq", name }; e.dataTransfer.setData("text/plain", name); closePop(); } },
+    el("span", { className: "sw", style: `background:${stripe(colors)}` }), name);
+}
+
+function renderPalette() {
+  const q = $("filter").value.toLowerCase(), sq = $("side-filter").value.toLowerCase();
+  const bridge = S.bridge_sequences;
+  $("palette").replaceChildren(...bridge.filter((s) => s.name.toLowerCase().includes(q)).map((s) => seqChip(s.name, s.colors)));
+  $("side").replaceChildren(
+    ...Object.keys(cfg.sequences).filter((n) => n.toLowerCase().includes(sq)).map((n) => seqChip(n, draftOf(n).colors)),
+    ...bridge.filter((s) => s.name.toLowerCase().includes(sq)).map((s) => seqChip(s.name, s.colors)));
+  $("seq-names").replaceChildren(...[...Object.keys(cfg.sequences), ...bridge.map((s) => s.name)].map((n) => el("option", { value: n })));
+}
+
+// --- the hover card: opens on hover (or click / Enter) over any [data-pop] chip; stays while you work in it ---
+const pop = { el: $("pop"), name: null, anchor: null, pinned: false, timer: null };
+function openPop(name, anchor, pinned = false) {
+  clearTimeout(pop.timer);
+  const mine = own(name), b = !mine && bridgeSeq(name);
+  if (!mine && !b) return;
+  pop.pinned = pinned || (pop.pinned && pop.name === (mine || name)); // a pinned card unpins when it moves to another sequence
+  pop.name = mine || name; pop.anchor = anchor;
+  pop.el.replaceChildren(mine ? seqEditor(mine) : bridgeCard(b));
+  pop.el.hidden = false;
+  if (anchor?.isConnected) {
+    const a = anchor.getBoundingClientRect(), w = pop.el.offsetWidth;
+    pop.el.style.left = `${Math.max(16, Math.min(a.left, innerWidth - w - 16)) + scrollX}px`;
+    pop.el.style.top = `${a.bottom + 6 + scrollY}px`;
+  }
+}
+function closePop(force = false) {
+  clearTimeout(pop.timer);
+  if (!force && (pop.pinned || pop.el.contains(document.activeElement) || (pop.name && isDirty(pop.name)))) return;
+  // an unsaved draft stays (the Sequences view shares it); Revert or Save drop it
+  pop.el.hidden = true; pop.name = null; pop.pinned = false;
+}
+const later = (fn, ms) => { clearTimeout(pop.timer); pop.timer = setTimeout(fn, ms); };
+document.addEventListener("mouseover", (e) => {
+  const chip = e.target.closest("[data-pop]");
+  if (chip && !drag) later(() => openPop(chip.dataset.pop, chip), pop.el.hidden ? 350 : 120);
+  else if (pop.el.contains(e.target)) clearTimeout(pop.timer);
+  else if (!pop.el.hidden) later(() => closePop(), 300);
+});
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-pop]");
+  if (chip && !e.target.closest("input, button")) openPop(chip.dataset.pop, chip, true);
+  else if (!pop.el.hidden && !pop.el.contains(e.target) && e.target.isConnected) closePop(true);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !pop.el.hidden) { const back = pop.anchor; closePop(true); back?.focus?.(); }
+  const chip = e.target.closest?.("[data-pop]");
+  if (chip && e.target === chip && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault(); openPop(chip.dataset.pop, chip, true); pop.el.querySelector("input, button")?.focus();
+  }
+});
+function refreshPop() {
+  if (pop.el.hidden || !pop.name) return;
+  const anchor = pop.anchor?.isConnected ? pop.anchor : document.querySelector(`[data-pop="${CSS.escape(pop.name)}"]`);
+  openPop(pop.name, anchor);
+}
+
+// --- status, saving, applying ---
+function renderStatus(msg) {
+  const plan = S.plan || [];
+  $("where").textContent = S.host ? `bridge ${S.host}` : "";
+  $("saved").textContent = msg ?? (S.error ? "" : plan.length ? `${plan.length} change${plan.length === 1 ? "" : "s"} to send to the bridge` : "The bridge matches your schedule");
+  $("apply").disabled = !!S.error || !plan.length;
+  $("apply").textContent = plan.length ? `Apply ${plan.length}` : "Apply";
+  $("review-btn").hidden = !plan.length;
+  $("review").replaceChildren(...plan.map((a) => el("li", { className: `op-${a.op}` }, el("b", {}, a.op), `${a.kind === "event" ? "" : "sequence "}${a.name}`, a.detail ? el("span", { className: "muted" }, `: ${a.detail}`) : null)));
+  if (!plan.length) { $("review").hidden = true; $("review-btn").setAttribute("aria-expanded", "false"); }
+  const problems = S.error ? S.error.replace(/^config problems, nothing applied:\n/, "").split("\n").map((l) => l.replace(/^\s*- /, "")) : [];
+  $("problems").hidden = !problems.length;
+  $("problems").replaceChildren(...problems.map((p) => el("li", {}, p)));
+}
+
+// keep the last good calendar, bridge list and dates while there are problems
+const merge = (state) => {
+  for (const k of ["nights", "bridge_sequences", "today", "horizon", "host"]) if (!(k in state)) state[k] = S?.[k];
+  state.bridge_sequences ||= [];
+  return state;
+};
+function useConfig(c) {
+  cfg = c; cfg.sequences ||= {}; cfg.schedule ||= [];
+  for (const spec of Object.values(cfg.sequences)) if (spec) spec.colors = (spec.colors || []).map(String);
+}
+
+let version = null; // of everlights.yml as last read; a save is refused if the file changed since
+function take(state, msg) {
+  S = merge(state);
+  if (S.version) version = S.version;
+  if (S.config) useConfig(S.config);
+  if (!cfg) return renderStatus();
+  renderStrings(); renderRules(); renderSeqs(); renderPalette(); renderStatus(msg);
+}
+
+let saving = Promise.resolve(), saves = 0;
+function save(structural = false) {
+  if (structural) { renderRules(); renderSeqs(); renderPalette(); refreshPop(); }
+  $("saved").textContent = "Saving…";
+  const body = JSON.stringify(cfg), mine = ++saves;
+  saving = saving.then(() => fetch("/api/config", { method: "PUT", headers: { "Content-Type": "application/json", ...(version && { "If-Match": version }) }, body }))
+    .then(async (r) => {
+      const state = await r.json(), latest = mine === saves;
+      if (r.status === 412) { // edited outside the page: show the file; saves queued on the old copy get 412 too
+        if (latest) take(state, "everlights.yml changed outside this page, so it was reloaded. Redo your last change.");
+        return;
+      }
+      if (!r.ok) throw new Error(state.error || r.statusText);
+      version = state.version;
+      if (!latest) return; // a newer save is queued; drawing this answer would undo it on screen
+      const focused = document.activeElement;
+      const keep = focused && focused !== document.body && !structural;
+      S = merge(state);
+      if (state.config && !keep) useConfig(state.config); // don't redraw fields under the cursor
+      renderStrings(); renderStatus(state.error ? "Saved, with problems to fix" : undefined);
+      if (!keep) { renderRules(); renderSeqs(); renderPalette(); refreshPop(); }
+      else document.querySelectorAll(".rule").forEach((li, i) => (li.querySelector(".rule-title span").textContent = `${when(cfg.schedule[i])}, ${times(cfg.schedule[i])}`));
+    })
+    .catch((e) => renderStatus(`Couldn't save: ${e.message}`));
+}
+
+// --- preview on the lights; the server clears it if these pings stop (tab closed, laptop asleep) ---
+let preview = null, pinger = null;
+const post = (path, body, opts = {}) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), ...opts })
+  .then(async (r) => { const j = await r.json(); if (j.error) throw new Error(j.error); return j; });
+
+async function startPreview(name, spec, own = true) {
+  try {
+    await post("/api/preview", { colors: spec.colors, effects: spec.effects });
+    preview = { name, own, sent: JSON.stringify(spec) };
+    clearInterval(pinger);
+    pinger = setInterval(() => post("/api/preview", { ping: true }).then((j) => { if (!j.previewing) previewEnded(); }).catch(() => {}), 5000);
+    renderPreview();
+  } catch (e) { renderStatus(`Couldn't preview: ${e.message}`); }
+}
+async function stopPreview() {
+  try { await post("/api/preview", { stop: true }); previewEnded(); }
+  catch (e) { renderStatus(`Couldn't stop the preview: ${e.message}`); }
+}
+function previewEnded() { preview = null; clearInterval(pinger); renderPreview(); }
+function renderPreview() {
+  $("previewing").hidden = !preview;
+  $("preview-name").textContent = preview?.name || "";
+  renderSeqs(); renderPalette(); refreshPop();
+}
+$("stop-preview").onclick = stopPreview;
+addEventListener("pagehide", () => preview && post("/api/preview", { stop: true }, { keepalive: true }));
+
+$("apply").onclick = async () => {
+  $("apply").disabled = true; $("apply").textContent = "Applying…";
+  await saving; // apply what's on screen, not the file as of an edit ago
+  try {
+    const r = await fetch("/api/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }), state = await r.json();
+    if (!r.ok) throw new Error(state.error || r.statusText);
+    take(state, state.error ? undefined : `Applied ${state.applied} change${state.applied === 1 ? "" : "s"}`);
+  } catch (e) {
+    // part of the plan may have gone through before the error: show where things stand now
+    const msg = `Couldn't apply: ${e.message}`, state = await fetch("/api/state").then((r) => r.json()).catch(() => null);
+    state?.config ? take(state, msg) : renderStatus(msg);
+  }
+};
+$("review-btn").onclick = (e) => {
+  const show = $("review").hidden;
+  $("review").hidden = !show; e.target.setAttribute("aria-expanded", String(show));
+};
+$("new-rule").onclick = () => {
+  let name = "New rule", n = 2;
+  while (cfg.schedule.some((r) => r.name === name)) name = `New rule ${n++}`;
+  cfg.schedule.unshift({ name, on: "Dec 25", sequences: [] });
+  open.add(name); save(true);
+};
+$("new-seq").onclick = () => {
+  let name = "New sequence", n = 2;
+  while (cfg.sequences[name]) name = `New sequence ${n++}`;
+  cfg.sequences[name] = { colors: ["FFB547"] };
+  save(true);
+  requestAnimationFrame(() => document.querySelector(`#seqs [data-seq="${CSS.escape(name)}"] .seq-name`)?.select());
+};
+$("filter").oninput = $("side-filter").oninput = renderPalette;
+
+// --- bridge info ---
+const ago = (iso) => {
+  if (!iso || iso.startsWith("1970")) return "never";
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? "just now" : m < 120 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+const yes = (v, y = "yes", n = "no") => (v ? y : n);
+function panel(title, rows) {
+  return el("section", { className: "panel" }, el("h3", {}, title),
+    el("dl", {}, rows.filter(([, v]) => v != null && v !== "").flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, String(v))])));
+}
+async function loadBridge() {
+  $("bridge-at").textContent = "Reading the bridge…";
+  try {
+    const r = await fetch("/api/bridge"), j = await r.json();
+    if (j.error) throw new Error(j.error);
+    const b = j.status, net = b.network || {};
+    $("checks").replaceChildren(...j.checks.map((c) => el("li", { className: c.ok === true ? "ok" : c.ok === false ? "warn" : "info" },
+      el("span", {}, c.name), el("span", {}, c.text))));
+    $("panels").replaceChildren(
+      panel(`Bridge ${b.serial}`, [
+        ["Firmware", `${b.firmwareVersion}, radio ${b.radioFirmwareVersion}`],
+        ["Network", `${net.interface || "?"}, ${b.localIp}${b.ssid ? `, ${b.ssid}` : ""}`],
+        ["Clock", `${yes(net.ntp, "NTP on", "NTP off")}${b.timeOffset ? `, offset ${b.timeOffset}` : ""}`],
+        ["Cloud", `${yes(b.serverReachable, "reachable", "unreachable")}, checked in ${ago(b.lastServerCheckin)}`],
+        ["Memory", b.minFreeHeap != null && `lowest free since boot ${b.minFreeHeap.toLocaleString()} bytes`],
+      ]),
+      panel("Reboots and links", [
+        ["Reboots", b.rebootCount],
+        ["Last reset", b.resetReason != null && `reason ${b.resetReason}`],
+        ["Supervisor", b.supervisorRebootCount != null && `${b.supervisorRebootCount} reboots`],
+        ["Radio", `${b.radioRebootCount} reboots, ${b.radioLoopsPerSecond ?? "?"} loops/s, answered ${ago(b.lastRadioResponse)}`],
+        ["Wi-Fi retries", b.wifiReconnectAttempts],
+        ["MQTT", b.mqttOutageMs != null && `${b.mqttOutageMs} ms outage, last ack ${Math.round((b.mqttBrokerAckAgeMs || 0) / 1000)} s ago`],
+      ]),
+      ...(b.zones || []).map((z) => panel(`Zone ${z.serial}`, [
+        ["State", yes(z.active, "active", "inactive")],
+        ["Lights", `${z.configuredLength} pixels, ${z.colorOrder}`],
+        ["Firmware", `${z.firmwareVersion}, hardware ${z.hardwareVersion}`],
+        ["Signal", `RSSI ${z.rssi}, SNR ${z.snr}`],
+        ["Sensors", `temperature ${z.temperature}, voltage ${z.voltage}, current ${z.current} (raw)`],
+        ["Reboots", z.rebootCount],
+        ["Last answer", ago(z.lastResponseDate)],
+      ])),
+    );
+    $("raw").textContent = JSON.stringify(b, null, 2);
+    $("bridge-at").textContent = `Read ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  } catch (e) { $("bridge-at").textContent = `Couldn't read the bridge: ${e.message}`; }
+}
+async function bridgeAction(action, done) {
+  try { await post("/api/bridge", { action }); $("bridge-at").textContent = done; }
+  catch (e) { $("bridge-at").textContent = `Couldn't ${action === "time" ? "set the clock" : "reboot"}: ${e.message}`; }
+}
+$("bridge-refresh").onclick = loadBridge;
+$("bridge-time").onclick = () => bridgeAction("time", "Bridge clock set to now").then(loadBridge);
+// two steps instead of a confirm() dialog
+$("bridge-reboot").onclick = (e) => {
+  const btn = e.currentTarget;
+  if (btn.dataset.armed) {
+    delete btn.dataset.armed; btn.textContent = "Reboot";
+    bridgeAction("reboot", "Rebooting; the lights may blink. Refresh in a minute.");
+  } else {
+    btn.dataset.armed = "1"; btn.textContent = "Reboot now? Click again";
+    setTimeout(() => { if (btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = "Reboot"; } }, 5000);
+  }
+};
+
+// views: #calendar (default), #sequences, #bridge
+function showView() {
+  const view = ["#sequences", "#bridge"].includes(location.hash) ? location.hash.slice(1) : "calendar";
+  document.body.dataset.view = view;
+  if (view === "bridge") loadBridge();
+  for (const v of ["calendar", "sequences", "bridge"]) $(`tab-${v}`).removeAttribute("aria-current");
+  $(`tab-${view}`).setAttribute("aria-current", "page");
+  closePop(true);
+}
+addEventListener("hashchange", showView);
+showView();
+document.addEventListener("dragend", () => { drag = null; document.querySelectorAll(".over,.drop-before,.drop-after").forEach((n) => n.classList.remove("over", "drop-before", "drop-after")); });
+
+fetch("/api/state").then((r) => r.json()).then((s) => take(s)).catch((e) => ($("saved").textContent = `Couldn't load: ${e.message}`));
+</script>
+</body>
+</html>

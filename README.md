@@ -87,6 +87,20 @@ schedule:                           # higher in the list wins a shared night
 - **Config location:** `--config` or `$EVERLIGHTS_CONFIG`. The config's `bridge.host` is used by every command unless `--host` or `$EVERLIGHTS_HOST` is set.
 - **Time zone:** set `timezone:` in the config, or it uses your machine's.
 
+### In a browser
+
+```sh
+everlights web               # http://localhost:4567 (--port to change)
+```
+
+The **Calendar** view shows each night ahead as a bulb on a light string, lit with the sequence that plays. Drag rules to set their priority. Drag sequences onto rules, or between them. Rule changes are saved to the config file straight away.
+
+Hover any sequence chip to open its card. For your own sequences you can edit colors and effects there, then **Save** or **Revert**. Built-ins and app-made sequences can be previewed or copied into yours. The **Sequences** view has the same editor for all of your sequences. The **Bridge** view shows health checks (the same as `bridge health`), firmware, network, reboots, and each zone's signal and sensors. It has buttons to set the clock and to reboot; reboot asks you to click twice. **Apply** sends the pending changes to the bridge.
+
+**Preview** (on a sequence, or click a bridge sequence) shows it on the lights now, and edits to it show as you make them. **Stop preview** hands the lights back to the calendar. So does closing the page: the preview is cleared about 20 seconds after the page stops checking in, and also when the server quits. During a running show, a preview only lasts until the show's next sequence change.
+
+The page only listens on localhost. Saving rewrites the YAML, which drops your comments; the first save keeps the original at `everlights.yml.bak`, and that copy is never replaced. If you edit the file by hand while the page is open, the page reloads it instead of overwriting it.
+
 To keep the calendar topped up, run it on a schedule, for example monthly from cron:
 `0 9 1 * * cd ~/everlights && everlights sync >> config/sync.log 2>&1`
 

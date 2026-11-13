@@ -19,7 +19,8 @@ module Everlights
 
     Action = Struct.new(:kind, :op, :name, :detail, :run)
 
-    Plan = Struct.new(:actions, :skips, :horizon, :sync) do
+    # shows: {rule name => [[start, end], ...]}, the nights each rule plays, tonight's show under way included
+    Plan = Struct.new(:actions, :skips, :horizon, :sync, :shows) do
       def empty? = actions.empty?
       def apply! = sync.apply(self)
 
@@ -63,11 +64,17 @@ module Everlights
     def self.load_config(path)
       config = YAML.safe_load_file(path, permitted_classes: [Date]) || {}
       # YAML 1.1 reads the key `on:` as boolean true; put it back
-      Array(config["schedule"]).each { |r| r["on"] = r.delete(true) if r.is_a?(Hash) && r.key?(true) }
+      # (transform_keys keeps `on` where it was, so a saved file reads in the same order)
+      config["schedule"].map! { |r| r.is_a?(Hash) ? r.transform_keys { _1 == true ? "on" : _1 } : r } if config["schedule"].is_a?(Array)
       config
     rescue Psych::SyntaxError => e
       raise Error, "#{path}: #{e.message}"
     end
+
+    # What sync has made on the bridge, next to the config.
+    def self.state_path(config_path) = File.join(File.dirname(config_path), ".sync-state.yml")
+
+    attr_reader :bridge_seqs # the bridge's sequences, as read by the last #plan
 
     def initialize(client, config, state_path: nil, adopt: false, now: Time.now)
       @c, @cfg, @state_path, @adopt, @now = client, config || {}, state_path, adopt, now
@@ -76,7 +83,7 @@ module Everlights
     def plan
       @errors = []
       @state = load_state
-      bridge_seqs = @c.sequence_list
+      bridge_seqs = @bridge_seqs = @c.sequence_list
       bridge_events = @c.event_list
       actions = @adopt ? adopt(bridge_seqs, bridge_events) : []
       owned_seq_ids = @state["sequences"].values
@@ -150,11 +157,13 @@ module Everlights
 
       # One calendar entry per rule. Nights already under way stay; ended ones are dropped.
       live = ->(event) { event["occurrences"].select { |o| Time.parse(o["start"]) <= @now + MARGIN && Time.parse(o["end"]) > @now } }
+      shows = {}
       rules.each do |r|
         nights = wanted[r[:name]]
         current = bridge_events.find { _1["id"] == @state["events"][r[:name]] }
-        kept = current ? live.(current).map { [Time.parse(_1["start"]), Time.parse(_1["end"])] } : []
+        kept = current ? live.(current).map { [Time.parse(_1["start"]).localtime, Time.parse(_1["end"]).localtime] } : []
         occurrences = kept + nights
+        shows[r[:name]] = occurrences unless occurrences.empty?
         flags = r[:start][:dusk] ? ["StartAtDusk"] : []
         if current.nil?
           next if nights.empty?
@@ -203,7 +212,7 @@ module Everlights
         end
       end
 
-      Plan.new(actions, skips, horizon, self)
+      Plan.new(actions, skips, horizon, self, shows)
     end
 
     def apply(plan)

@@ -34,6 +34,7 @@ USAGE = <<~TXT
   Sync (config/everlights.yml: sequences + schedule, see config/everlights.example.yml):
     sync [--dry-run] [--adopt]            build sequences and the calendar ahead; prints the plan
     sync --check                          plan only; exit 2 if the bridge needs a sync (for cron)
+    web [--port N]                        edit the config in a browser and apply it (localhost:4567)
 
   Options:
 TXT
@@ -56,6 +57,7 @@ parser = OptionParser.new do |o|
   o.on("--yes", "confirm bridge reboot") { opts[:yes] = true }
   o.on("--dry-run", "sync: print the plan only") { opts[:dry_run] = true }
   o.on("--check", "sync: plan only, exit 2 if anything would change") { opts[:check] = true }
+  o.on("--port N", Integer, "web: port (default 4567)") { opts[:port] = _1 }
   o.on("--adopt", "sync: take over bridge items whose names match the config") { opts[:adopt] = true }
 end
 parser.parse!
@@ -95,22 +97,7 @@ begin
       end
     end
   when "bridge health"
-    # ponytail: thresholds are guesses from one bridge; tune when real failures show what matters
-    b = el.status
-    ago = ->(v) { v ? ((Time.now - Time.parse(v)) / 60).round : Float::INFINITY }
-    mins = ->(m) { m.infinite? ? "never" : "#{m} min ago" }
-    cloud, radio = ago.(b["lastServerCheckin"]), ago.(b["lastRadioResponse"])
-    checks = [
-      [!!b["serverReachable"] && cloud <= 15, "cloud", "#{b["serverReachable"] ? "reachable" : "unreachable"}, checked in #{mins.(cloud)}"],
-      [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"],
-      [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"],
-      [radio <= 10, "radio", "answered #{mins.(radio)}, #{b["radioRebootCount"]} radio reboots"],
-      *b["zones"].map do |z|
-        last = ago.(z["lastResponseDate"])
-        [!!z["active"] && last <= 10, "zone #{z["serial"]}", "#{z["active"] ? "active" : "inactive"}, answered #{mins.(last)}, #{z["rebootCount"]} reboots"]
-      end,
-      [:info, "reboots", "#{b["rebootCount"]} total, last reset reason #{b["resetReason"]}"]
-    ]
+    checks = Everlights.health(el.status)
     checks.each { |ok, name, text| puts "#{{info: "info", true => "ok  ", false => "WARN"}[ok]}  #{name.ljust(19)} #{text}" }
     exit 2 unless checks.all? { _1[0] }
   when "bridge time"
@@ -197,8 +184,7 @@ begin
 
   when "sync"
     raise Everlights::Error, "no config at #{config_path}; copy config/everlights.example.yml to start" unless config
-    state_path = File.join(File.dirname(config_path), ".sync-state.yml")
-    plan = Everlights::Sync.new(el, config, state_path: state_path, adopt: opts[:adopt]).plan
+    plan = Everlights::Sync.new(el, config, state_path: Everlights::Sync.state_path(config_path), adopt: opts[:adopt]).plan
     puts plan
     if plan.empty? then nil
     elsif opts[:check] then exit 2
@@ -207,6 +193,11 @@ begin
       plan.apply!
       puts "\nApplied."
     end
+
+  when "web"
+    raise Everlights::Error, "no config at #{config_path}; copy config/everlights.example.yml to start" unless config
+    require_relative "../lib/everlights/web"
+    Everlights::Web.new(el, config_path, port: opts[:port] || 4567).start
 
   else abort parser.help
   end

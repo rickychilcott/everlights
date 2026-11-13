@@ -161,6 +161,25 @@ module Everlights
     end
   end
 
+  # [[ok, name, text], ...] from Client#status; ok is true, false, or :info.
+  # ponytail: thresholds are guesses from one bridge; tune when real failures show what matters
+  def self.health(b, now: Time.now)
+    ago = ->(v) { v ? ((now - Time.parse(v)) / 60).round : Float::INFINITY }
+    mins = ->(m) { m.infinite? ? "never" : "#{m} min ago" }
+    cloud, radio = ago.(b["lastServerCheckin"]), ago.(b["lastRadioResponse"])
+    [
+      [!!b["serverReachable"] && cloud <= 15, "cloud", "#{b["serverReachable"] ? "reachable" : "unreachable"}, checked in #{mins.(cloud)}"],
+      [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"],
+      [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"],
+      [radio <= 10, "radio", "answered #{mins.(radio)}, #{b["radioRebootCount"]} radio reboots"],
+      *b["zones"].map do |z|
+        last = ago.(z["lastResponseDate"])
+        [!!z["active"] && last <= 10, "zone #{z["serial"]}", "#{z["active"] ? "active" : "inactive"}, answered #{mins.(last)}, #{z["rebootCount"]} reboots"]
+      end,
+      [:info, "reboots", "#{b["rebootCount"]} total, last reset reason #{b["resetReason"]}"]
+    ]
+  end
+
   def self.stamp(t) = (t.is_a?(Time) ? t : Time.parse(t.to_s)).getutc.iso8601(6)
 
   class Sequences

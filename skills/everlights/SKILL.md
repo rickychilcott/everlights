@@ -62,6 +62,8 @@ When the user wants a recurring or seasonal plan ("Christmas every December", "F
 2. Run `everlights sync --dry-run` and show the user the plan, including the Skipped and No show sections. `everlights sync --check` is the same plan, but exits 2 when anything would change.
 3. Run `everlights sync` only after they confirm.
 
+If the user would rather click and drag, suggest `everlights web`: it edits the same file and has its own Apply button.
+
 Sync only changes what it created itself. Config problems abort before anything is written; fix every one it lists. Use `--adopt` only when the user says the state file was lost.
 
 ## Unverified

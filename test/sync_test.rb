@@ -190,6 +190,15 @@ class SyncTest < Minitest::Test
     assert_equal [Date.new(2026, 11, 1), Date.new(2026, 11, 2)], b.nights("Nightly").map(&:to_date)
   end
 
+  def test_shows_include_tonight_once_under_way # so `everlights web` draws it lit, not as a skipped night
+    rule = [{"name" => "Nightly", "every" => %w[Sun Mon], "start" => "18:10", "sequences" => ["Fall Wave"]}]
+    b = bridge
+    plan(config(rule, horizon_days: 1), b, now: Time.new(2026, 11, 1, 17, 50)).apply!
+    shows = plan(config(rule, horizon_days: 1), b, now: Time.new(2026, 11, 1, 18, 30)).shows["Nightly"]
+    assert_equal [Time.new(2026, 11, 1, 18, 10), Time.new(2026, 11, 2, 18, 10)], shows.map(&:first)
+    assert_equal "18:10", shows[0][0].strftime("%H:%M"), "local time, as the bridge's UTC stamp is not"
+  end
+
   def test_nights_held_by_app_made_entries_are_skipped
     app = {"id" => "app-1", "alias" => "Halloween", "group" => "User Created", "flags" => [], "sequences" => [],
            "occurrences" => [{"start" => Time.new(2026, 11, 2, 17).getutc.iso8601, "end" => Time.new(2026, 11, 2, 22).getutc.iso8601}]}
@@ -313,6 +322,11 @@ class SyncTest < Minitest::Test
     p.apply!
     assert_equal({"sequences" => {"My Birthday" => "app-seq"}, "events" => {"Bday" => "app-ev"}}, YAML.safe_load_file(@state))
     assert_equal ["FF1E8C"], b.sequence_list.find { _1["id"] == "app-seq" }["pattern"]
+  end
+
+  def test_a_schedule_that_isnt_a_list_still_loads # sync reports it; other commands carry on
+    File.write(path = File.join(@dir, "c.yml"), "schedule:\n  Christmas: {on: Dec 25}\n")
+    assert_kind_of Hash, Everlights::Sync.load_config(path)["schedule"]
   end
 
   def test_unquoted_yaml_time_reads_as_clock_time
