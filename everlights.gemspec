@@ -7,7 +7,7 @@ Gem::Specification.new do |s|
   s.email = "ricky@rickychilcott.com"
   s.license = "MIT"
   s.required_ruby_version = ">= 3.1"
-  s.files = Dir["lib/**/*.rb", "lib/**/*.html", "exe/*", "skills/**/*", "README.md", "LICENSE"]
+  s.files = Dir["lib/**/*.rb", "lib/**/*.html", "exe/*", "skills/**/*", "config/everlights.example.yml", "README.md", "LICENSE"]
   s.bindir = "exe"
   s.executables = ["everlights"]
   s.homepage = "https://github.com/rickychilcott/everlights"

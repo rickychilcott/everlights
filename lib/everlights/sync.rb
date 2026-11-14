@@ -1,7 +1,7 @@
 require "yaml"
 
 module Everlights
-  # Builds sequences and calendar entries on the bridge from a config (see config/everlights.example.yml).
+  # Builds sequences and calendar entries on the bridge from a config (`everlights init` writes one; format in config/everlights.example.yml).
   #
   #   config = Everlights::Sync.load_config("config/everlights.yml")
   #   plan = Everlights::Sync.new(el, config, state_path: "config/.sync-state.yml").plan  # raises Error listing every config problem
@@ -313,7 +313,7 @@ module Everlights
       start = check(where) { parse_start(r.fetch("start", defaults["start"])) }
       finish = check(where) { parse_hm(r.fetch("end", defaults["end"])) }
       if start&.dig(:dusk) && !(@cfg.dig("location", "lat") && @cfg.dig("location", "lon"))
-        @errors << "#{where}: dusk needs `location: {lat:, lon:}` in the config"
+        @errors << "rules that start at dusk need `location: {lat:, lon:}` in the config"
       end
       seconds = r.fetch("seconds", defaults["seconds"])
       @errors << "#{where}: needs sequences" if Array(r["sequences"]).empty?

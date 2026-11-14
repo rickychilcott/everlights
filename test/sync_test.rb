@@ -300,7 +300,7 @@ class SyncTest < Minitest::Test
     b = bridge
     err = assert_raises(Everlights::Error) { plan(cfg, b) }
     [/rule "A": unknown sequence "Nope"/, /rule "B": needs exactly one of/, /rule "C": unknown month "Smarch"/,
-     /rule "D": dusk needs `location/, /rule "E": can't read time "7pm"/, /rule names must be unique: a/,
+     /start at dusk need `location/, /rule "E": can't read time "7pm"/, /rule names must be unique: a/,
      /sequence "Birthday" has the same name as a built-in/, /sequence "Mine": bad color "red"/,
      /sequence "Mine": unknown effect sparkle/].each { assert_match _1, err.message }
     assert_empty b.log
@@ -392,6 +392,36 @@ class SyncTest < Minitest::Test
     _, err, st = Open3.capture3({"EVERLIGHTS_HOST" => "127.0.0.1:1", "EVERLIGHTS_CONFIG" => nil},
                                 "ruby", File.expand_path("../exe/everlights", __dir__), "sync", chdir: @dir)
     refute st.success?
-    assert_match(/no config at config\/everlights.yml; copy config\/everlights.example.yml/, err)
+    assert_match(/no config at config\/everlights.yml; run `everlights init`/, err)
+  end
+
+  def test_cli_init_writes_a_starter_config_that_plans
+    init = ->(*args) do
+      Open3.capture3({"EVERLIGHTS_HOST" => nil, "EVERLIGHTS_CONFIG" => nil},
+                     "ruby", File.expand_path("../exe/everlights", __dir__), "init", *args, chdir: @dir)
+    end
+    out, err, st = init.()
+    assert st.success?, err
+    assert_match(/Uncomment `location:`.*\n.*everlights login/, out)
+    path = File.join(@dir, "config", "everlights.yml")
+    text = File.read(path)
+    assert_match(/^# location: .*\n#   lat:/, text)
+    assert_match(/^# bridge:/, text)
+    cfg = Everlights::Sync.load_config(path)
+    assert_nil cfg["bridge"]
+
+    # Every sequence it names is on the bridge, so the only problem is the location it leaves for you.
+    names = cfg["schedule"].flat_map { _1["sequences"] }.map { _1.sub(/:\d+\z/, "") }.uniq - cfg["sequences"].keys
+    b = MemoryBridge.new(seqs: names.each_with_index.map { |n, i| {"id" => format("00000000-0000-0000-0000-%012d", i), "alias" => n, "pattern" => ["FFFFFF"], "effects" => []} })
+    err = assert_raises(Everlights::Error) { plan(cfg, b) }
+    assert_equal ["rules that start at dusk need `location: {lat:, lon:}` in the config"], err.message.lines.drop(1).map { _1.strip.delete_prefix("- ") }
+    shows = plan(cfg.merge("location" => NYC), b).shows
+    assert_includes shows.keys, "Thanksgiving"
+
+    _, err, st = init.()
+    refute st.success?
+    assert_match(/already exists/, err)
+    init.("--config", "other.yml", "--host", "10.0.0.9")
+    assert_equal({"host" => "10.0.0.9"}, Everlights::Sync.load_config(File.join(@dir, "other.yml"))["bridge"])
   end
 end

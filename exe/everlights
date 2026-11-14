@@ -36,7 +36,8 @@ USAGE = <<~TXT
                                           default dusk to 23:00, 20s per sequence
     calendar remove DATE NAME
 
-  Sync (config/everlights.yml: sequences + schedule, see config/everlights.example.yml):
+  Sync (config/everlights.yml: sequences + schedule):
+    init [--host HOST]                    write a starter config: holidays, a birthday, a season
     sync [--dry-run] [--adopt]            build sequences and the calendar ahead; prints the plan
     sync --check                          plan only; exit 2 if the bridge needs a sync (for cron)
     web [--port N]                        edit the config in a browser and apply it (localhost:4567)
@@ -74,7 +75,7 @@ def json(obj) = puts(JSON.pretty_generate(obj))
 begin
   config_path = opts[:config] || ENV["EVERLIGHTS_CONFIG"] || "config/everlights.yml"
   config = if File.exist?(config_path) then Everlights::Sync.load_config(config_path)
-           elsif opts[:config] || ENV["EVERLIGHTS_CONFIG"] then raise Everlights::Error, "no config at #{config_path}"
+           elsif (opts[:config] || ENV["EVERLIGHTS_CONFIG"]) && ARGV.first != "init" then raise Everlights::Error, "no config at #{config_path}"
            end
   ENV["TZ"] = config["timezone"] if config&.dig("timezone")
   cmd = ARGV.shift
@@ -99,6 +100,20 @@ begin
   when "logout"
     cloud.logout
     puts "Logged out. Commands use the local bridge API again."
+    exit
+  when "init"
+    raise Everlights::Error, "#{config_path} already exists; edit it, or pass --config to start another" if File.exist?(config_path)
+    text = File.read(File.expand_path("../config/everlights.example.yml", __dir__))
+    text = opts[:host] ? text.sub("192.168.1.50", opts[:host]) : text.sub(/^bridge:.*\n  host:.*\n/) { _1.gsub(/^/, "# ") }
+    text = text.sub(/^location:.*\n(?:  .*\n)+/) { _1.gsub(/^/, "# ") } # no default: a wrong one means wrong dusk times
+    tz = File.symlink?("/etc/localtime") && File.readlink("/etc/localtime")[%r{zoneinfo/(.+)\z}, 1]
+    text = text.sub(/^# timezone: \S+/) { "timezone: #{tz}" } if tz
+    FileUtils.mkdir_p(File.dirname(config_path))
+    File.write(config_path, text)
+    puts "Wrote #{config_path}. Next:"
+    puts "  - Uncomment `location:` and put in your latitude and longitude; dusk is worked out from them."
+    puts "  - Run `everlights login EMAIL`, or set bridge.host for the local API (firmware before B5010)." unless cloud.logged_in? || opts[:host]
+    puts "  - Edit the sequences and schedule, then run `everlights sync --dry-run`."
     exit
   end
 
@@ -213,7 +228,7 @@ begin
     puts "removed #{name.join(" ")} on #{date}"
 
   when "sync"
-    raise Everlights::Error, "no config at #{config_path}; copy config/everlights.example.yml to start" unless config
+    raise Everlights::Error, "no config at #{config_path}; run `everlights init` to start one" unless config
     plan = Everlights::Sync.new(el, config, state_path: Everlights::Sync.state_path(config_path), adopt: opts[:adopt]).plan
     puts plan
     if plan.empty? then nil
@@ -225,7 +240,7 @@ begin
     end
 
   when "web"
-    raise Everlights::Error, "no config at #{config_path}; copy config/everlights.example.yml to start" unless config
+    raise Everlights::Error, "no config at #{config_path}; run `everlights init` to start one" unless config
     require_relative "../lib/everlights/web"
     Everlights::Web.new(el, config_path, port: opts[:port] || 4567).start
 
