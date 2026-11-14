@@ -20,6 +20,10 @@ module Everlights
   BUILTIN_PREFIX = "00000000-0000-0000-0000-" # ids of EverLights' stock sequences
   DEFAULT_SECONDS = 20
   EFFECTS = %w[bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe].freeze
+  # Firmware B5010 (Oct 2026) answers every endpoint but GET /v1 with 410 {"error":"gone","cloud":true}.
+  NO_LOCAL_CONTROL = "the bridge's firmware has turned off local control (410 gone): firmware B5010 and later " \
+                     "only take commands from the EverLights cloud, so this tool can't change the lights. " \
+                     "Check with `everlights bridge`."
 
   class Client
     def initialize(host = nil, timeout: 10)
@@ -134,6 +138,7 @@ module Everlights
       req = verb.new(path, "Content-Type" => "application/json")
       req.body = JSON.generate(body) if body
       res = @http.request(req)
+      raise Error, NO_LOCAL_CONTROL if res.code == "410" && res.body.to_s.match?(/"cloud"\s*:\s*true/)
       raise Error, "#{verb::METHOD} #{path} -> #{res.code}: #{res.body}" unless res.is_a?(Net::HTTPSuccess)
       res.body.to_s.empty? ? nil : JSON.parse(res.body)
     end
@@ -168,6 +173,7 @@ module Everlights
     mins = ->(m) { m.infinite? ? "never" : "#{m} min ago" }
     cloud, radio = ago.(b["lastServerCheckin"]), ago.(b["lastRadioResponse"])
     [
+      *([[false, "local control", "off: firmware #{b["firmwareVersion"]} only takes commands from the cloud"]] if b["cloud"]),
       [!!b["serverReachable"] && cloud <= 15, "cloud", "#{b["serverReachable"] ? "reachable" : "unreachable"}, checked in #{mins.(cloud)}"],
       [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"],
       [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"],

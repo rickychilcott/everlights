@@ -9,6 +9,8 @@
 
 A Ruby client and CLI for the EverLights v3 Smart Lights Bridge. It talks to the bridge directly on your local network: no cloud, no account, and no dependencies outside Ruby's standard library.
 
+> **Bridge firmware B5010 and later turned off this local API.** See [Protocol](#protocol).
+
 Use it to show colors now, manage saved sequences, and put shows on the calendar weeks or months ahead. The bridge stores scheduled shows itself, so they run with no computer on.
 
 > Unofficial. Not affiliated with or endorsed by EverLights. The EverLights name and logo belong to their owner.
@@ -160,6 +162,8 @@ The bridge (an ESP32) serves plain JSON over HTTP on port 80, with no authentica
 | `PUT /v1/time`, `GET /v1/reboot` | clock; reboot (note: a GET) |
 
 Verified against bridge firmware B4042, radio R3052 and zone firmware N3063. Firmware updates arrive over the air from EverLights' cloud; there is no local update endpoint.
+
+**Firmware B5010 (October 2026) turned off local control.** The bridge updates itself, and on B5010 every endpoint except `GET /v1` answers `410 {"error":"gone","cloud":true}`. Only `everlights bridge` and `bridge health` still work there; other commands stop with a message saying so, and `bridge health` warns. Community reports on holding off the update: [mcr63/everlightsv3#1](https://github.com/mcr63/everlightsv3/issues/1).
 
 Not yet confirmed:
 - What each effect's 0–255 value does.
