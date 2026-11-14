@@ -329,6 +329,7 @@ function focusRule(name) {
 
 // --- rules ---
 function when(r) {
+  if (r.ics != null) return r.match ? `calendar feed, "${r.match}"` : "calendar feed";
   if (r.on != null) return String(r.on);
   const span = r.from != null ? `${r.from} to ${r.to}` : "all year";
   const ev = r.every ? [].concat(r.every) : null;
@@ -383,7 +384,7 @@ function text(obj, key, attrs = {}) {
 }
 
 function ruleBody(r, ri) {
-  const once = r.on != null;
+  const kind = r.ics != null ? "ics" : r.on != null ? "on" : "span";
   const every = r.every ? [].concat(r.every).map((d) => DAYS.find((x) => x.toLowerCase() === String(d).slice(0, 3).toLowerCase())) : DAYS;
   const setDays = (days) => {
     if (days.length === 7 && r.from != null) delete r.every; else r.every = days;
@@ -397,11 +398,18 @@ function ruleBody(r, ri) {
       save(true);
     } })),
     field("When", el("select", { onchange: (e) => {
-      if (e.target.value === "on") { delete r.from; delete r.to; delete r.every; r.on = "Dec 25"; }
-      else { delete r.on; r.every = DAYS.slice(); }
+      for (const k of ["on", "from", "to", "every", "ics", "match"]) delete r[k];
+      if (e.target.value === "on") r.on = "Dec 25";
+      else if (e.target.value === "ics") r.ics = "";
+      else r.every = DAYS.slice();
       save(true);
-    } }, el("option", { value: "on", selected: once }, "One night a year"), el("option", { value: "span", selected: !once }, "Several nights"))),
-    once ? field("Date", text(r, "on", { placeholder: "Dec 25, Easter-2, 4th Thursday of November" }))
+    } }, el("option", { value: "on", selected: kind === "on" }, "One night a year"), el("option", { value: "span", selected: kind === "span" }, "Several nights"),
+      el("option", { value: "ics", selected: kind === "ics" }, "Days in a calendar feed"))),
+    kind === "on" ? field("Date", text(r, "on", { placeholder: "Dec 25, Easter-2, 4th Thursday of November" }))
+      : kind === "ics" ? [
+        field("Feed", text(r, "ics", { placeholder: "https://… .ics (webcal:// works too)" })),
+        field("Title has", text(r, "match", { placeholder: "e.g. Bobcats; blank for every event" })),
+      ]
       : [
         field("From", el("div", { className: "pair" },
           text(r, "from", { placeholder: "Dec 1", "aria-label": "From" }), el("span", { className: "muted" }, "to"),

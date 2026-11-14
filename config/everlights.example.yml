@@ -32,6 +32,7 @@ sequences:                      # your own; they show up in the app under Person
 #   on:   2027-03-14 | Dec 25 | 4th Thursday of November | last Monday of May | Easter | Easter-47
 #   from: Dec 1 / to: Jan 1          (every night in between, every year)
 #   every: [Friday, Saturday]        (optionally with from:/to: to limit it to a season)
+#   ics: https://.../games.ics       (each event's day in a calendar feed; match: Bobcats keeps titles with it)
 # sequences: built-in or your own names (`everlights sequence list`); "Name:30" plays it for 30 seconds.
 schedule:
   - name: New Year's Eve

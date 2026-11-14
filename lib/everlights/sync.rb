@@ -260,6 +260,20 @@ module Everlights
 
     # --- dates ---
 
+    # The dates of an iCalendar feed's events, in local time; `match` keeps events whose title contains it.
+    # ponytail: an event counts on its start date only: a recurring one (RRULE) on its first, a multi-day one
+    # on its first day. Team and school feeds list each event; expand RRULE if a feed needs it.
+    def self.ics_dates(text, match = nil)
+      text.gsub("\r\n", "\n").gsub(/\n[ \t]/, "") # unfold continued lines
+          .scan(/^BEGIN:VEVENT\n(.*?)^END:VEVENT$/m).filter_map do |(event)|
+        next if event.match?(/^STATUS:CANCELLED$/)
+        next if match && !event[/^SUMMARY[^:\n]*:(.*)$/, 1].to_s.downcase.include?(match.to_s.downcase)
+        m = event.match(/^DTSTART[^:\n]*:(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d)(\d\d)(Z)?)?/) or next
+        y, mo, d, h, mi, s = m.captures.first(6).map(&:to_i)
+        m[7] ? Time.utc(y, mo, d, h, mi, s).localtime.to_date : Date.new(y, mo, d) # floating and TZID times: their own date
+      end.uniq
+    end
+
     # Anonymous Gregorian algorithm.
     def self.easter(year)
       a, b, c = year % 19, year / 100, year % 100
@@ -365,16 +379,39 @@ module Everlights
     end
 
     def matcher(r, where)
-      on, every, range = r["on"], r["every"], r.key?("from") || r.key?("to")
-      if [on, every].compact.size + (range && !every ? 1 : 0) != 1
-        @errors << "#{where}: needs exactly one of `on:`, `from:`/`to:`, or `every:`"
+      on, every, range, ics = r["on"], r["every"], r.key?("from") || r.key?("to"), r["ics"]
+      if [on, every, ics].compact.size + (range && !every ? 1 : 0) != 1
+        @errors << "#{where}: needs exactly one of `on:`, `from:`/`to:`, `every:`, or `ics:`"
         return nil
       end
       return check(where) { on_matcher(on) } if on
+      if ics
+        dates = check(where) { Sync.ics_dates(fetch(ics), r["match"]) }
+        return dates && ->(d) { dates.include?(d) }
+      end
       in_range = range ? check(where) { range_matcher(r["from"], r["to"]) } : ->(_) { true }
       return in_range unless every && in_range
       days = check(where) { Array(every).map { weekday(_1) } }
       days && ->(d) { days.include?(d.wday) && in_range.(d) }
+    end
+
+    # ponytail: fetched on every plan, and `web` plans on each save; cache it if a slow feed makes the page drag
+    def fetch(source)
+      src = source.to_s.strip
+      raise Error, "`ics:` needs a URL or a file path" if src.empty?
+      return File.read(src) unless src.match?(%r{\A(https?|webcal)://}i)
+      uri = URI(src.sub(/\Awebcal/i, "https"))
+      3.times do
+        res = Net::HTTP.get_response(uri)
+        return res.body if res.is_a?(Net::HTTPSuccess)
+        raise Error, "#{src} -> #{res.code}" unless res.is_a?(Net::HTTPRedirection)
+        uri = URI.join(uri, res["location"])
+      end
+      raise Error, "#{src}: too many redirects"
+    rescue Error
+      raise
+    rescue StandardError => e # no network, no such file, bad TLS, ...
+      raise Error, "can't read #{src}: #{e.message}"
     end
 
     def on_matcher(v)

@@ -86,6 +86,7 @@ schedule:                           # higher in the list wins a shared night
   - `on:` takes a date (`2027-03-14`), a yearly date (`Dec 25`), `Nth Weekday of Month`, `last Monday of May`, or `Easter`.
   - `from:`/`to:` repeats nightly, every year, and can cross New Year.
   - `every:` takes weekdays, optionally limited by `from:`/`to:`.
+  - `ics:` takes a calendar feed (an `https://` or `webcal://` URL, or a file), and the show plays on each event's day: a team's games, school events, a shared family calendar. `match: Bobcats` keeps only events whose title contains it. Cancelled events are skipped. A recurring event counts once, on its first date, and a multi-day event on its first day. The feed is read each time sync plans.
 - **Times:** `start:` is `dusk`, `dusk+15` or `"18:30"`; `end:` defaults to `"23:00"`. An end earlier than the start means the next morning.
 - **Future only:** sync adds only nights that start more than 15 minutes from now. Each rule becomes one calendar entry, and re-running sync rolls the window forward.
 - **Leaves your app-made shows alone:** sync only changes or deletes what it created, tracked in `config/.sync-state.yml`. It skips nights an app-made show already covers, and refuses names that clash with built-ins or app-made items. If the state file is lost, `--adopt` takes back items whose names match the config. To bring shows and sequences made in the app under the config, `everlights export` prints them as config YAML: add it to the file, then `sync --adopt`.
