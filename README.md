@@ -62,7 +62,7 @@ everlights calendar remove 2026-12-24 Christmas    # one night
 Describe your own sequences and a schedule once. `everlights sync` then builds them on the bridge for the months ahead:
 
 ```sh
-cp config/everlights.example.yml config/everlights.yml   # gitignored; edit the IP, location and schedule
+everlights init                                          # writes config/everlights.yml: US holidays, a birthday, a season
 everlights sync --dry-run                                # print the plan
 everlights sync                                          # apply it
 ```

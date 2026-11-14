@@ -1,19 +1,19 @@
-# Copy to config/everlights.yml (gitignored) and edit. Then:
+# Your year of light shows. `everlights init` writes this file; edit it, then:
 #   everlights sync --dry-run   # see the plan
 #   everlights sync             # apply it
 #
 # Sync builds sequences and calendar entries for the next `horizon_days`, only on nights that haven't
-# started yet. It only changes or deletes what it created itself (tracked in config/.sync-state.yml),
-# so shows you make in the EverLights app are left alone.
+# started yet. It only changes or deletes what it created itself (tracked in .sync-state.yml next to
+# this file), so shows you make in the EverLights app are left alone.
 
-bridge:
+bridge:                         # only for the local API (firmware before B5010); after `everlights login` it isn't used
   host: 192.168.1.50            # EverLights app -> device information. --host / $EVERLIGHTS_HOST override it.
 
 location:                       # for dusk: sunset is calculated per night from this
   lat: 40.0
   lon: -83.0
 
-timezone: America/New_York      # optional; defaults to this machine's
+# timezone: America/New_York    # optional; defaults to this machine's
 horizon_days: 120               # how far ahead each sync fills the calendar
 
 defaults:                       # any rule can override these
@@ -26,39 +26,73 @@ sequences:                      # your own; they show up in the app under Person
     colors: [FF1E8C, FFC400, 00A8FF, FFFFFF, 9D2BFF, FFC400, 2BFF6A, FFFFFF]
     effects: {chase: 60, twinkle: 180}   # bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe
 
-# One rule per show. When two rules want the same night, the one higher in this list wins.
+# One rule per show. When two rules want the same night, the one higher in this list wins,
+# so single nights come first and seasons last.
 # A rule's "when" is exactly one of:
-#   on:   2027-03-14 | Dec 25 | 4th Thursday of November | last Monday of May | Easter
+#   on:   2027-03-14 | Dec 25 | 4th Thursday of November | last Monday of May | Easter | Easter-47
 #   from: Dec 1 / to: Jan 1          (every night in between, every year)
 #   every: [Friday, Saturday]        (optionally with from:/to: to limit it to a season)
-# sequences: built-in or your own names; "Name:30" plays it for 30 seconds.
+# sequences: built-in or your own names (`everlights sequence list`); "Name:30" plays it for 30 seconds.
 schedule:
+  - name: New Year's Eve
+    on: Dec 31
+    sequences: [New Year's]
+    end: "00:30"
+
   - name: Christmas Day
     on: Dec 25
     sequences: [Christmas, "Candy Cane Lane:30"]
     end: "01:00"
 
-  - name: Christmas Season
-    from: Dec 1
-    to: Jan 1
-    sequences: [Christmas, Winter]
+  - name: Valentine's Day
+    on: Feb 14
+    sequences: [Valentine's Day]
 
-  - name: Thanksgiving
-    on: 4th Thursday of November
-    sequences: [Thanksgiving]
+  - name: St. Patrick's Day
+    on: Mar 17
+    sequences: [St Patrick's Day]
+
+  - name: Easter
+    on: Easter
+    sequences: [Easter]
+
+  - name: Mother's Day
+    on: 2nd Sunday of May
+    sequences: [Mother's Day]
+
+  - name: Memorial Day
+    on: last Monday of May
+    sequences: [Star Spangled Twinkle]
+
+  - name: Father's Day
+    on: 3rd Sunday of June
+    sequences: [Father's Day]
 
   - name: Independence Day
     on: Jul 4
     sequences: [Independence Day, 4th of July]
     end: "23:59"
 
-  - name: Easter
-    on: Easter
-    sequences: [Easter]
+  - name: Halloween
+    on: Oct 31
+    sequences: [Halloween, Hallows Eve]
+
+  - name: Veterans Day
+    on: Nov 11
+    sequences: [Star Spangled Twinkle]
+
+  - name: Thanksgiving
+    on: 4th Thursday of November
+    sequences: [Thanksgiving]
 
   - name: Birthday
     on: 2027-03-14
     sequences: [My Birthday]
+
+  - name: Christmas Season
+    from: Dec 1
+    to: Jan 1
+    sequences: [Christmas, Winter]
 
   - name: Fall Weekends
     every: [Friday, Saturday]
