@@ -41,6 +41,7 @@ USAGE = <<~TXT
     sync [--dry-run] [--adopt]            build sequences and the calendar ahead; prints the plan
     sync --check                          plan only; exit 2 if the bridge needs a sync (for cron)
     web [--port N]                        edit the config in a browser and apply it (localhost:4567)
+    export                                what the app made (sequences, shows) as config YAML, for sync --adopt
 
   Options:
 TXT
@@ -238,6 +239,18 @@ begin
       plan.apply!
       puts "\nApplied."
     end
+
+  when "export"
+    require_relative "../lib/everlights/web"
+    found, notes = Everlights::Sync.export(el, state_path: Everlights::Sync.state_path(config_path))
+    found.reject! { _2.empty? }
+    puts "# Made outside sync: in the EverLights app, or with `sequence add` / `calendar add`."
+    if found.empty? then puts "# Nothing. Everything on the bridge is built in or made by sync."
+    else
+      puts "# To manage these from your config, add them to it, then run `everlights sync --adopt --dry-run`."
+    end
+    notes.each { puts "# Left out: #{_1}" }
+    puts Everlights::Web.dump(found) unless found.empty?
 
   when "web"
     raise Everlights::Error, "no config at #{config_path}; run `everlights init` to start one" unless config

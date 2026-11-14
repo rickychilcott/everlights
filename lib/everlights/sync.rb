@@ -74,6 +74,43 @@ module Everlights
     # What sync has made on the bridge, next to the config.
     def self.state_path(config_path) = File.join(File.dirname(config_path), ".sync-state.yml")
 
+    # What's on the bridge that sync didn't make (the EverLights app, `sequence add`, `calendar add`), as config:
+    # [{"sequences" => {...}, "schedule" => [...]}, notes about what a config can't say].
+    # Shows become one rule each, from their nights still to come.
+    def self.export(client, state_path: nil, now: Time.now)
+      state = state_path && File.exist?(state_path) ? YAML.safe_load_file(state_path) || {} : {}
+      ours = (state["sequences"] || {}).values + (state["events"] || {}).values
+      seqs = client.sequence_list
+      names = seqs.to_h { [_1["id"], _1["alias"]] }
+      sequences = seqs.reject { _1["id"].start_with?(BUILTIN_PREFIX) || ours.include?(_1["id"]) }.to_h do |s|
+        effects = s["effects"].to_h { [_1["effectType"], _1["value"]] }
+        [s["alias"], effects.empty? ? {"colors" => s["pattern"]} : {"colors" => s["pattern"], "effects" => effects}]
+      end
+      notes = []
+      schedule = client.event_list.reject { ours.include?(_1["id"]) }.filter_map do |e|
+        nights = e["occurrences"].map { [Time.parse(_1["start"]).localtime, Time.parse(_1["end"]).localtime] }
+                                 .select { |_, finish| finish > now }.sort
+        days = nights.map { _1[0].to_date }
+        next if days.empty?
+        unless days.each_cons(2).all? { |a, b| b == a + 1 }
+          notes << "#{e["alias"]}: its nights aren't in a row (#{days.map(&:iso8601).join(", ")}); write rules for them by hand"
+          next
+        end
+        notes << "#{e["alias"]}: plays on some zones only; a rule plays on every zone" unless e["zoneSerials"] == [ALL_ZONES]
+        start, finish = nights[0]
+        rule = {"name" => e["alias"]}
+        rule.merge!(days.size == 1 ? {"on" => days[0]} : {"from" => days[0], "to" => days[-1]})
+        rule["start"] = e["flags"].include?("StartAtDusk") ? "dusk" : start.strftime("%H:%M")
+        rule["end"] = finish.strftime("%H:%M")
+        rule["sequences"] = e["sequences"].map do |q|
+          name = names.fetch(q["sequenceId"], q["sequenceId"])
+          q["duration"] == DEFAULT_SECONDS ? name : "#{name}:#{q["duration"]}"
+        end
+        rule
+      end
+      [{"sequences" => sequences, "schedule" => schedule}, notes]
+    end
+
     attr_reader :bridge_seqs # the bridge's sequences, as read by the last #plan
 
     def initialize(client, config, state_path: nil, adopt: false, now: Time.now)

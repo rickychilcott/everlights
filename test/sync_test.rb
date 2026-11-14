@@ -354,6 +354,40 @@ class SyncTest < Minitest::Test
     TXT
   end
 
+  # --- export ---
+
+  def test_export_turns_what_sync_didnt_make_into_config_it_can_adopt
+    b = bridge
+    plan(config([{"name" => "Synced", "on" => "Dec 23", "sequences" => ["Christmas"]}]), b).apply! # sync's own: left out
+    app = {"id" => "app-1", "alias" => "Porch Party", "groups" => ["Personal/"], "pattern" => %w[FF0000 00FF00],
+           "effects" => [{"effectType" => "chase", "value" => 60}]}
+    b.instance_variable_get(:@seqs) << app
+    b.create_event("Party Week", sequences: [["app-1", 30], [BUILTINS[0]["id"], 20]], flags: ["StartAtDusk"], id: "ev-1",
+                   occurrences: (4..6).map { [Time.new(2026, 12, _1, 17), Time.new(2026, 12, _1, 23)] })
+    b.create_event("Gone", sequences: [["app-1", 20]], id: "ev-2", occurrences: [[Time.new(2026, 10, 1, 19), Time.new(2026, 10, 1, 22)]])
+    b.create_event("Gappy", sequences: [["app-1", 20]], id: "ev-3",
+                   occurrences: [[Time.new(2026, 12, 1, 19), Time.new(2026, 12, 1, 22)], [Time.new(2026, 12, 8, 19), Time.new(2026, 12, 8, 22)]])
+    b.create_event("Late One", sequences: [["app-1", 20]], id: "ev-4", zones: ["z1"],
+                   occurrences: [[Time.new(2026, 12, 12, 21, 30), Time.new(2026, 12, 13, 1, 0)]])
+
+    found, notes = Everlights::Sync.export(b, state_path: @state, now: NOON)
+    assert_equal({"Porch Party" => {"colors" => %w[FF0000 00FF00], "effects" => {"chase" => 60}}}, found["sequences"])
+    assert_equal [{"name" => "Party Week", "from" => Date.new(2026, 12, 4), "to" => Date.new(2026, 12, 6), "start" => "dusk", "end" => "23:00",
+                   "sequences" => ["Porch Party:30", "Christmas"]},
+                  {"name" => "Late One", "on" => Date.new(2026, 12, 12), "start" => "21:30", "end" => "01:00", "sequences" => ["Porch Party"]}],
+                 found["schedule"]
+    assert_equal 2, notes.size
+    assert_match(/Gappy: its nights aren't in a row \(2026-12-01, 2026-12-08\)/, notes[0])
+    assert_match(/Late One: plays on some zones only/, notes[1])
+
+    # Pasted into the config, --adopt takes them over: nothing new is created.
+    cfg = config([{"name" => "Synced", "on" => "Dec 23", "sequences" => ["Christmas"]}] + found["schedule"], sequences: found["sequences"])
+    cfg = YAML.safe_load(YAML.dump(cfg), permitted_classes: [Date]) # as if read back from the file
+    p = plan(cfg, b, adopt: true)
+    assert_equal [], p.actions.select { _1.op == :create }.map(&:name)
+    assert_equal ["Porch Party", "Party Week", "Late One"], p.actions.select { _1.op == :adopt }.map(&:name)
+  end
+
   # --- CLI ---
 
   def test_cli_sync_dry_run_reads_host_and_timezone_from_config

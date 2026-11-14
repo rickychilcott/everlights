@@ -57,6 +57,11 @@ class WebTest < Minitest::Test
     assert_empty s["plan"]
   end
 
+  def test_yaml_is_written_like_a_person_writes_it
+    out = Everlights::Web.dump("sequences" => ["Candy Cane:30", "Christmas"], "end" => "23:00", "effects" => {"chase" => 60})
+    assert_equal "sequences: ['Candy Cane:30', Christmas]\nend: '23:00'\neffects: {chase: 60}\n", out # no `! 'Candy Cane:30'`
+  end
+
   def test_config_problems_are_reported_not_raised
     _, s = call("GET", "/api/state")
     s["config"]["schedule"][0]["sequences"] = ["Nope"]
