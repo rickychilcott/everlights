@@ -29,6 +29,13 @@ class WebTest < Minitest::Test
     [code, out.start_with?("{") ? JSON.parse(out) : out]
   end
 
+  def test_a_gradient_reaches_the_page_as_its_colors
+    File.write(@path, File.read(@path).sub("colors: [FF7A1E]", "colors: [FF7A1E..FF9E3D:4, FF8628]"))
+    _, s = call("GET", "/api/state")
+    assert_equal %w[FF7A1E FF8628 FF9233 FF9E3D FF8628], s["config"]["sequences"]["Glow"]["colors"]
+    assert_equal "Glow: 5 colors", s["plan"].find { _1["kind"] == "sequence" }.values_at("name", "detail").join(": ")
+  end
+
   def test_state_shows_the_plan_and_each_night
     code, s = call("GET", "/api/state")
     assert_equal 200, code

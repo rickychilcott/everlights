@@ -52,6 +52,7 @@ everlights calendar remove 2026-12-24 Christmas    # one night
 
 - **Calendar defaults:** a show starts at dusk and ends at 23:00. Each sequence plays for 20 seconds unless you write `name:seconds`.
 - **Times** use your machine's local time zone. An end time earlier than the start means the next morning. `--until` repeats the show nightly and stays correct across DST changes.
+- **Gradients:** anywhere a color goes, `FF7A1E..FF9E3D:4` is 4 colors blended evenly from the first to the last. Middle stops bend it: `FF0000..FFFFFF..0000FF:9`. In the web editor, ↔ blends the colors between a sequence's first and last.
 - **Effects:** `bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe`, each with a strength from 0 to 255.
 - **JSON:** add `--json` to list commands and `bridge`.
 - **Now commands** (`set`, `play`, `off`): during a running show they only last until its next sequence change.

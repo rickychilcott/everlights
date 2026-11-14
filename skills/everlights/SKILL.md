@@ -18,6 +18,7 @@ The `everlights` CLI talks to the bridge through the EverLights cloud once the u
 
 - **Zone**: one run of pixels, identified by serial. `everlights zones` lists them. Commands default to all zones; `--zone SERIAL` narrows one.
 - **Sequence**: a saved pattern of hex colors (`RRGGBB`, repeated along the run) plus up to a few effects. The bridge has about 96 built-ins (`everlights sequence list xmas` searches by name; `*` marks user-made ones). Sequences added here show up in the EverLights app under Personal. Built-in names include "Birthday", so give personal sequences distinct names (e.g. "My Birthday").
+- **Gradient**: anywhere a color goes, `FF0000..0000FF:5` is 5 colors blended evenly; middle stops bend it (`FF0000..FFFFFF..0000FF:9`).
 - **Effect**: `--effect TYPE=N`, N 0-255 (default 128; higher seems faster). Types: bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe. Built-ins often stack two, e.g. `fade` + `reverseChase`.
 - **Manual program** (`set`/`play`): shows immediately. During a scheduled show, it only lasts until the show's next sequence change (about 20 seconds). Outside a show it stays. `clear` hands control back to the calendar.
 - **Calendar entry**: a scheduled show. It cycles its sequences (`NAME:SECONDS`, default 20) during each night's window. The bridge stores it, so it runs with no computer on. Default window: dusk to 23:00.

@@ -275,6 +275,11 @@ function colorsOf(name) {
   return S.bridge_sequences.find((s) => s.name.toLowerCase() === lower)?.colors || [];
 }
 const hex = (c) => "#" + String(c).replace(/^#/, "");
+// the same count of colors, evenly from the first to the last (as "FIRST..LAST:N" does in the config)
+function blend(colors) {
+  const [a, b] = [colors[0], colors.at(-1)].map((c) => [1, 3, 5].map((i) => parseInt(hex(c).slice(i, i + 2), 16)));
+  return colors.map((_, i) => a.map((v, k) => Math.round(v + (b[k] - v) * i / (colors.length - 1)).toString(16).padStart(2, "0")).join("").toUpperCase());
+}
 function stripe(colors) {
   if (!colors.length) return "transparent";
   if (colors.length === 1) return hex(colors[0]);
@@ -547,6 +552,8 @@ function seqEditor(name, { card = false } = {}) {
           onclick: () => { d.colors.splice(i, 1); changed(); } }, "×"))),
       el("button", { className: "plus", "aria-label": `Add a color to ${name}`, title: "Add a color",
         onclick: () => { d.colors.push(d.colors.at(-1) || "FFFFFF"); changed(); } }, "+"),
+      d.colors.length > 2 && el("button", { className: "plus", "aria-label": `Blend ${name} from its first color to its last`,
+        title: "Blend: fill the colors between the first and last evenly", onclick: () => { d.colors = blend(d.colors); changed(); } }, "↔"),
     ),
     fx.map(([type, value], i) => el("div", { className: "fx" },
       el("select", { "aria-label": "Effect", onchange: (e) => { fx[i][0] = e.target.value; setFx(); } },

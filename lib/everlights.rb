@@ -175,12 +175,26 @@ module Everlights
     def stamp(t) = Everlights.stamp(t)
   end
 
-  # ["#ff0000", ...] -> ["FF0000", ...]
+  # ["#ff0000", ...] -> ["FF0000", ...]; a gradient "FF0000..0000FF:5" becomes its 5 colors
   def self.colors(pattern)
-    Array(pattern).map do |c|
-      hex = c.to_s.delete_prefix("#").upcase
+    Array(pattern).flat_map do |c|
+      hex = c.to_s.delete("#").upcase
+      next gradient(hex) if hex.include?("..")
       raise Error, "bad color #{c.inspect}, want RRGGBB" unless hex.match?(/\A\h{6}\z/)
       hex
+    end
+  end
+
+  # "FF7A1E..FF9E3D:4" -> 4 colors evenly from the first to the last; middle stops bend it: "FF0000..FFFFFF..0000FF:9"
+  def self.gradient(text)
+    m = text.match(/\A(\h{6}(?:\.\.\h{6})+):(\d+)\z/) or raise Error, "bad gradient #{text.inspect}, want RRGGBB..RRGGBB:COUNT"
+    stops = m[1].split("..").map { |h| h.scan(/../).map { _1.to_i(16) } }
+    count = m[2].to_i
+    raise Error, "gradient #{text.inspect}: count must be at least 2" if count < 2
+    (0...count).map do |i|
+      at = i * (stops.size - 1) / (count - 1).to_f # position along the stops, 0..stops-1
+      k = [at.floor, stops.size - 2].min
+      stops[k].zip(stops[k + 1]).map { |a, b| format("%02X", (a + (b - a) * (at - k)).round) }.join
     end
   end
 

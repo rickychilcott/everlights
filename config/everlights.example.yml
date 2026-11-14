@@ -24,6 +24,8 @@ defaults:                       # any rule can override these
 sequences:                      # your own; they show up in the app under Personal
   My Birthday:
     colors: [FF1E8C, FFC400, 00A8FF, FFFFFF, 9D2BFF, FFC400, 2BFF6A, FFFFFF]
+  Ember Glow:
+    colors: [FF7A1E..FF9E3D:4, FF9233]  # a gradient: 4 colors from FF7A1E to FF9E3D, then one more
     effects: {chase: 60, twinkle: 180}   # bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe
 
 # One rule per show. When two rules want the same night, the one higher in this list wins,
