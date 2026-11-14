@@ -59,7 +59,7 @@ el.calendar.remove "2026-12-24", "Christmas"
 
 When the user wants a recurring or seasonal plan ("Christmas every December", "Fridays in football season"), edit `config/everlights.yml` rather than adding calendar entries one by one. If there's no config yet, `everlights init` writes a starter one. The format reference is `config/everlights.example.yml`.
 
-1. Edit `sequences:` or `schedule:`. Rules higher in the list win nights they share.
+1. Edit `sequences:` or `schedule:`. Rules higher in the list win nights they share. For a team's games or other events in a calendar, a rule can use `ics: <feed URL>` with `match: <title text>`.
 2. Run `everlights sync --dry-run` and show the user the plan, including the Skipped and No show sections. `everlights sync --check` is the same plan, but exits 2 when anything would change.
 3. Run `everlights sync` only after they confirm.
 

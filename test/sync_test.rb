@@ -354,6 +354,36 @@ class SyncTest < Minitest::Test
     TXT
   end
 
+  # --- calendar feeds ---
+
+  FEED = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "BEGIN:VEVENT", "SUMMARY:Bobcats vs. Miami", "DTSTART;VALUE=DATE:20261121", "END:VEVENT",
+    "BEGIN:VEVENT", "SUMMARY:Bobcats at Toledo (late kickoff, so the UTC date is the next day)",
+    "DTSTART:20261128T003000Z", "END:VEVENT",
+    "BEGIN:VEVENT", "SUMMARY:Bobcats vs. Akron", "STATUS:CANCELLED", "DTSTART:20261205T170000Z", "END:VEVENT",
+    "BEGIN:VEVENT", "SUMMARY:Bob", " cats bowl game", "DTSTART;TZID=America/New_York:20261219T120000", "END:VEVENT", # a folded line
+    "BEGIN:VEVENT", "SUMMARY:Team dinner", "DTSTART;VALUE=DATE:20261212", "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\r\n")
+
+  def test_ics_rule_plays_the_feed_s_event_days
+    File.write(feed = File.join(@dir, "games.ics"), FEED)
+    b = bridge
+    rules = [{"name" => "Game Day", "ics" => feed, "match" => "bobcats", "start" => "18:00", "sequences" => ["Fall Wave"]},
+             {"name" => "Everything", "ics" => feed, "start" => "18:00", "sequences" => ["Christmas"]}]
+    plan(config(rules), b).apply!
+    assert_equal [Date.new(2026, 11, 21), Date.new(2026, 11, 27), Date.new(2026, 12, 19)], b.nights("Game Day").map(&:to_date)
+    assert_equal [Date.new(2026, 12, 12)], b.nights("Everything").map(&:to_date), "the rest go to the rule above"
+
+    err = assert_raises(Everlights::Error) do
+      plan(config([{"name" => "A", "ics" => File.join(@dir, "nope.ics"), "sequences" => ["Christmas"]},
+                   {"name" => "B", "ics" => feed, "on" => "Dec 25", "sequences" => ["Christmas"]}]), bridge)
+    end
+    assert_match(/rule "A": can't read .*nope.ics/, err.message)
+    assert_match(/rule "B": needs exactly one of `on:`, `from:`\/`to:`, `every:`, or `ics:`/, err.message)
+  end
+
   # --- export ---
 
   def test_export_turns_what_sync_didnt_make_into_config_it_can_adopt
