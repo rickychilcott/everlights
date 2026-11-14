@@ -354,6 +354,15 @@ class SyncTest < Minitest::Test
     TXT
   end
 
+  def test_a_gradient_sequence_syncs_once
+    b = bridge
+    cfg = config([{"name" => "Glow", "on" => "Dec 23", "sequences" => ["Evening Glow"]}],
+                 sequences: {"Evening Glow" => {"colors" => ["FF7A1E..FF9E3D:4", "FF9233", "FF8628"]}})
+    plan(cfg, b).apply!
+    assert_equal %w[FF7A1E FF8628 FF9233 FF9E3D FF9233 FF8628], b.sequence_list.find { _1["alias"] == "Evening Glow" }["pattern"]
+    assert plan(cfg, b).empty?, "the expanded colors match what's on the bridge"
+  end
+
   # --- calendar feeds ---
 
   FEED = [

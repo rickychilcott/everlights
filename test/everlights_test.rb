@@ -29,6 +29,17 @@ class EverlightsTest < Minitest::Test
 
   def last_request = @bridge.requests.last
 
+  def test_gradients_expand_to_their_colors
+    assert_equal %w[FF7A1E FF8628 FF9233 FF9E3D FF9233], Everlights.colors(["ff7a1e..#FF9E3D:4", "FF9233"])
+    assert_equal %w[FF0000 FF8080 FFFFFF 8080FF 0000FF], Everlights.colors("FF0000..FFFFFF..0000FF:5"), "a middle stop"
+    assert_equal %w[000000 FFFFFF], Everlights.colors("000000..FFFFFF:2")
+    assert_raises(Everlights::Error) { Everlights.colors("FF0000..00FF00") }   # no count
+    assert_raises(Everlights::Error) { Everlights.colors("FF0000..00FF00:1") }
+    assert_raises(Everlights::Error) { Everlights.colors("red..00FF00:3") }
+    cli!("set", "000000..0000FF:3")
+    assert_equal %w[000000 000080 0000FF], last_request[2]["pattern"]
+  end
+
   def test_set_program_normalizes_colors_and_effects
     el = client
     el.set_program("z1", pattern: ["#ff0000", "00ff00"], effects: {chase: 60, twinkle: nil})

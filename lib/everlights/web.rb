@@ -142,6 +142,12 @@ module Everlights
       [config["defaults"], *config["schedule"]].each do |r|
         %w[start end].each { r[_1] = hm.(r[_1]) if r.is_a?(Hash) && r.key?(_1) }
       end
+      # a gradient ("FF0000..0000FF:5") reaches the page as the colors it makes, and is saved as them
+      (config["sequences"].is_a?(Hash) ? config["sequences"] : {}).each_value do |s|
+        s["colors"] = Everlights.colors(s["colors"]) if s.is_a?(Hash) && Array(s["colors"]).any? { _1.to_s.include?("..") }
+      rescue Error
+        nil # a bad one is left for the plan to report
+      end
       config
     end
 
