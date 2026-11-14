@@ -111,7 +111,7 @@ module Everlights
       when %w[GET /api/bridge]
         status = @c.status
         [200, "application/json", JSON.generate(status: status, now: Everlights.stamp(Time.now),
-                                                checks: Everlights.health(status).map { |ok, name, text| {ok: ok, name: name, text: text} })]
+                                                checks: Everlights.health(status, via_cloud: @c.is_a?(Client) && @c.cloud?).map { |ok, name, text| {ok: ok, name: name, text: text} })]
       when %w[POST /api/bridge]
         case JSON.parse(body)["action"]
         when "time" then @c.set_time(Time.now)
@@ -175,7 +175,7 @@ module Everlights
     def state
       config = load
       out = {config: config, version: version, effects: EFFECTS, today: Date.today.iso8601,
-             horizon: Integer(config["horizon_days"] || 120, exception: false) || 120, host: config.dig("bridge", "host")}
+             horizon: Integer(config["horizon_days"] || 120, exception: false) || 120, host: (@c.to_s if @c.is_a?(Client))}
       sync = Sync.new(@c, config, state_path: @state_path)
       plan = begin
         sync.plan

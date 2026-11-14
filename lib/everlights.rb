@@ -22,17 +22,30 @@ module Everlights
   EFFECTS = %w[bars blink chase fade gradient lightning melt pingPong random reverseChase strobe twinkle wipe].freeze
   # Firmware B5010 (Oct 2026) answers every endpoint but GET /v1 with 410 {"error":"gone","cloud":true}.
   NO_LOCAL_CONTROL = "the bridge's firmware has turned off local control (410 gone): firmware B5010 and later " \
-                     "only take commands from the EverLights cloud, so this tool can't change the lights. " \
-                     "Check with `everlights bridge`."
+                     "only take commands from the EverLights cloud. Run `everlights login` to send them that way."
 
   class Client
-    def initialize(host = nil, timeout: 10)
-      host ||= ENV["EVERLIGHTS_HOST"]
-      raise Error, "no host: pass one or set EVERLIGHTS_HOST" unless host
-      uri = URI("http://#{host}")
+    WRITE_GAP = 0.25 # seconds between writes through the cloud; the bridge misbehaves when they stack up
+
+    # host: the bridge on the LAN. cloud: an Everlights::Cloud, for firmware B5010+ (no local control).
+    def initialize(host = nil, timeout: 10, cloud: nil)
+      if (@cloud = cloud)
+        raise Error, "not logged in; run `everlights login`" unless cloud.bridge
+        uri = URI(cloud.tunnel)
+        @prefix = "#{uri.path}/#{cloud.bridge}/proxy"
+        timeout = Cloud::TIMEOUT
+      else
+        host ||= ENV["EVERLIGHTS_HOST"]
+        raise Error, "no bridge: run `everlights login`, or pass --host or set EVERLIGHTS_HOST for a local one" unless host
+        uri = URI("http://#{host}")
+      end
       @http = Net::HTTP.new(uri.host, uri.port)
+      @http.use_ssl = uri.scheme == "https"
       @http.open_timeout = @http.read_timeout = timeout
     end
+
+    def cloud? = !!@cloud
+    def to_s = @cloud ? "bridge #{@cloud.bridge} via the EverLights cloud" : "bridge #{@http.address}"
 
     def sequences = Sequences.new(self)
     def calendar = Calendar.new(self)
@@ -135,12 +148,26 @@ module Everlights
     def get(path) = request(Net::HTTP::Get, path)
 
     def request(verb, path, body = nil)
-      req = verb.new(path, "Content-Type" => "application/json")
-      req.body = JSON.generate(body) if body
-      res = @http.request(req)
+      pace if @cloud && (verb != Net::HTTP::Get || path.end_with?("/reboot"))
+      res = send_request(verb, path, body)
+      # the tunnel turned the token away before the bridge saw the request, so once more is safe
+      res = send_request(verb, path, body, fresh: true) if @cloud && res.code == "401"
       raise Error, NO_LOCAL_CONTROL if res.code == "410" && res.body.to_s.match?(/"cloud"\s*:\s*true/)
       raise Error, "#{verb::METHOD} #{path} -> #{res.code}: #{res.body}" unless res.is_a?(Net::HTTPSuccess)
       res.body.to_s.empty? ? nil : JSON.parse(res.body)
+    end
+
+    def send_request(verb, path, body, fresh: false)
+      req = verb.new(@cloud ? "#{@prefix}#{path}#{"/" if path == "/v1"}" : path, "Content-Type" => "application/json")
+      req["Authorization"] = "Bearer #{@cloud.tunnel_token(fresh: fresh)}" if @cloud
+      req.body = JSON.generate(body) if body
+      @http.request(req)
+    end
+
+    def pace
+      wait = WRITE_GAP - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - (@last_write || 0))
+      sleep wait if wait.positive?
+      @last_write = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def colors(pattern) = Everlights.colors(pattern)
@@ -168,21 +195,25 @@ module Everlights
 
   # [[ok, name, text], ...] from Client#status; ok is true, false, or :info.
   # ponytail: thresholds are guesses from one bridge; tune when real failures show what matters
-  def self.health(b, now: Time.now)
+  # via_cloud: commands go through the cloud, so the bridge's local control being off is expected.
+  # Firmware B5010 stopped reporting network and memory; those show as info, not warnings.
+  def self.health(b, now: Time.now, via_cloud: false)
     ago = ->(v) { v ? ((now - Time.parse(v)) / 60).round : Float::INFINITY }
     mins = ->(m) { m.infinite? ? "never" : "#{m} min ago" }
     cloud, radio = ago.(b["lastServerCheckin"]), ago.(b["lastRadioResponse"])
+    unreported = ->(name) { [:info, name, "not reported by firmware #{b["firmwareVersion"]}"] }
     [
-      *([[false, "local control", "off: firmware #{b["firmwareVersion"]} only takes commands from the cloud"]] if b["cloud"]),
+      *([[via_cloud ? :info : false, "local control",
+          "off in firmware #{b["firmwareVersion"]}; #{via_cloud ? "commands go through the cloud" : "run `everlights login`"}"]] if b["cloud"]),
       [!!b["serverReachable"] && cloud <= 15, "cloud", "#{b["serverReachable"] ? "reachable" : "unreachable"}, checked in #{mins.(cloud)}"],
-      [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"],
-      [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"],
-      [radio <= 10, "radio", "answered #{mins.(radio)}, #{b["radioRebootCount"]} radio reboots"],
+      b.key?("network") ? [!!b.dig("network", "ntp"), "clock", "ntp #{b.dig("network", "ntp") ? "on" : "off"}"] : unreported.("clock"),
+      b.key?("minFreeHeap") ? [b["minFreeHeap"].to_i >= 10_000, "memory", "lowest free since boot #{b["minFreeHeap"]} bytes (warn under 10000)"] : unreported.("memory"),
+      [radio <= 10, "radio", "answered #{mins.(radio)}#{", #{b["radioRebootCount"]} radio reboots" if b["radioRebootCount"]}"],
       *b["zones"].map do |z|
         last = ago.(z["lastResponseDate"])
         [!!z["active"] && last <= 10, "zone #{z["serial"]}", "#{z["active"] ? "active" : "inactive"}, answered #{mins.(last)}, #{z["rebootCount"]} reboots"]
       end,
-      [:info, "reboots", "#{b["rebootCount"]} total, last reset reason #{b["resetReason"]}"]
+      [:info, "reboots", "#{b["rebootCount"]} total#{", last reset reason #{b["resetReason"]}" if b["resetReason"]}"]
     ]
   end
 
@@ -279,3 +310,4 @@ module Everlights
 end
 
 require_relative "everlights/sync"
+require_relative "everlights/cloud"

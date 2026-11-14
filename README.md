@@ -7,9 +7,7 @@
   </picture>
 </p>
 
-A Ruby client and CLI for the EverLights v3 Smart Lights Bridge. It talks to the bridge directly on your local network: no cloud, no account, and no dependencies outside Ruby's standard library.
-
-> **Bridge firmware B5010 and later turned off this local API.** See [Protocol](#protocol).
+A Ruby client and CLI for the EverLights v3 Smart Lights Bridge, with no dependencies outside Ruby's standard library. Bridge firmware B5010 and later only take commands through the EverLights cloud, so it signs in with your EverLights app account. On older firmware it can talk to the bridge directly on your local network, with no account.
 
 Use it to show colors now, manage saved sequences, and put shows on the calendar weeks or months ahead. The bridge stores scheduled shows itself, so they run with no computer on.
 
@@ -19,14 +17,19 @@ Use it to show colors now, manage saved sequences, and put shows on the calendar
 
 ```sh
 gem install everlights
-export EVERLIGHTS_HOST=192.168.1.50   # your bridge's IP (EverLights app → device information)
+everlights login you@example.com      # your EverLights app account; asks for the password
 ```
+
+`login` saves a login token in `~/.config/everlights/cloud.json` (readable only by you, and never your password), then sends commands to your bridge through the EverLights cloud. It picks the account's first bridge; `--bridge SERIAL` picks another. The password can also come from a pipe, for example from 1Password: `op read "op://Private/EverLights/password" | everlights login you@example.com`. `everlights logout` forgets the token.
+
+On firmware older than B5010 you can skip the login and use the local API: `export EVERLIGHTS_HOST=192.168.1.50` (your bridge's IP, from the EverLights app → device information). Once you're logged in, `--host` still selects the local API for a single command.
 
 Requires Ruby 3.1+.
 
 ## CLI
 
 ```sh
+everlights login you@example.com                   # once; then everything goes through the cloud
 everlights bridge                                  # firmware, network, cloud, zone health
 everlights bridge health                           # ok/WARN checks; exits 2 on any warning
 everlights show                                    # what's playing, e.g. "Halloween Fade (Halloween show)"
@@ -113,7 +116,8 @@ To only be told when it needs a sync, use `everlights sync --check`. It prints t
 ```ruby
 require "everlights"
 
-el = Everlights::Client.new("192.168.1.50")    # or ENV["EVERLIGHTS_HOST"]
+el = Everlights::Client.new(cloud: Everlights::Cloud.new)   # after `everlights login`; or Everlights::Cloud.login(email, password)
+el = Everlights::Client.new("192.168.1.50")                   # local API, firmware before B5010; or ENV["EVERLIGHTS_HOST"]
 
 el.play "Hallows Eve"
 el.set "FF0000", "00FF00", effects: {twinkle: 100}
@@ -163,7 +167,18 @@ The bridge (an ESP32) serves plain JSON over HTTP on port 80, with no authentica
 
 Verified against bridge firmware B4042, radio R3052 and zone firmware N3063. Firmware updates arrive over the air from EverLights' cloud; there is no local update endpoint.
 
-**Firmware B5010 (October 2026) turned off local control.** The bridge updates itself, and on B5010 every endpoint except `GET /v1` answers `410 {"error":"gone","cloud":true}`. Only `everlights bridge` and `bridge health` still work there; other commands stop with a message saying so, and `bridge health` warns. Community reports on holding off the update: [mcr63/everlightsv3#1](https://github.com/mcr63/everlightsv3/issues/1).
+**Firmware B5010 (October 2026) turned off local control.** The bridge updates itself, and on B5010 every endpoint except `GET /v1` answers `410 {"error":"gone","cloud":true}`. Without a login, commands stop with a message saying so, and `bridge health` warns.
+
+The cloud serves the same API through a tunnel, which is how the EverLights app reaches the bridge now:
+
+| | |
+|---|---|
+| `POST https://appserver-v2.myeverlights.com/v1/oauth/token` | sign in: `{grant_type: "password", username, password}`, or `refresh_token`. The refresh token changes each time it's used |
+| `GET …/v1/bridges` | the account's bridges |
+| `GET …/v1/bridges/{serial}/remotetoken` | a token for that bridge's tunnel |
+| `https://remote.myeverlights.com/bridges/{serial}/proxy/v1/…` | the bridge API above, with `Authorization: Bearer <tunnel token>` |
+
+Writes through the tunnel go out at least 0.25 seconds apart, because the bridge misbehaves when they stack up. B5010 also stopped reporting network and memory in its status, so `bridge health` shows those as info. The cloud is the app's private API: EverLights could change it at any time.
 
 Not yet confirmed:
 - What each effect's 0–255 value does.
@@ -188,7 +203,7 @@ To release, bump the version in `everlights.gemspec`, commit, then tag and push 
 
 ## Credits
 
-The protocol work builds on [weswitt/everlights3](https://github.com/weswitt/everlights3), whose OpenAPI spec mapped the endpoints, and [theOrakle/everlightsv3](https://github.com/theOrakle/everlightsv3), which is also the source of the logo images. There is also a Home Assistant [core integration](https://www.home-assistant.io/integrations/everlights) for the older v2 bridge.
+The protocol work builds on [weswitt/everlights3](https://github.com/weswitt/everlights3), whose OpenAPI spec mapped the endpoints, and [theOrakle/everlightsv3](https://github.com/theOrakle/everlightsv3), which is also the source of the logo images. [borski/everlightsv3_cloud](https://github.com/borski/everlightsv3_cloud) mapped the cloud tunnel. There is also a Home Assistant [core integration](https://www.home-assistant.io/integrations/everlights) for the older v2 bridge.
 
 ## License
 

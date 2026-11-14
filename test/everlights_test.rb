@@ -187,7 +187,7 @@ class EverlightsTest < Minitest::Test
     @bridge = nil # a fresh fake with its own routes
     out, _, st = cli("bridge", "health", routes: {"GET /v1" => healthy_bridge.merge("firmwareVersion" => "B5010", "cloud" => true)})
     assert_equal 2, st.exitstatus
-    assert_match(/^WARN  local control +off: firmware B5010/, out)
+    assert_match(/^WARN  local control +off in firmware B5010; run `everlights login`/, out)
   end
 
   # --- CLI, one test per command ---
