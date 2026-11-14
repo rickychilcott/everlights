@@ -651,7 +651,7 @@ function refreshPop() {
 // --- status, saving, applying ---
 function renderStatus(msg) {
   const plan = S.plan || [];
-  $("where").textContent = S.host ? `bridge ${S.host}` : "";
+  $("where").textContent = S.host || "";
   $("saved").textContent = msg ?? (S.error ? "" : plan.length ? `${plan.length} change${plan.length === 1 ? "" : "s"} to send to the bridge` : "The bridge matches your schedule");
   $("apply").disabled = !!S.error || !plan.length;
   $("apply").textContent = plan.length ? `Apply ${plan.length}` : "Apply";

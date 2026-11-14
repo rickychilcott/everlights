@@ -5,13 +5,13 @@ description: Control EverLights permanent outdoor lights through the local bridg
 
 # EverLights
 
-The `everlights` CLI talks to the bridge on the LAN (no auth). It needs `EVERLIGHTS_HOST` (bridge IP) or `--host`. Lists print text (add `--json` for JSON); `status`, `zones` and `show` print JSON.
+The `everlights` CLI talks to the bridge through the EverLights cloud once the user has run `everlights login` (firmware B5010 and later need this). On older firmware it can use the LAN instead with `EVERLIGHTS_HOST` (the bridge's IP) or `--host`. Lists print text (add `--json` for JSON); `status`, `zones` and `show` print JSON.
 
 ## Before you write anything
 
 1. Run `everlights calendar list` and `everlights show` (names what's playing and which show it's from) first (`everlights bridge health` if something seems broken; it marks problems WARN). Report what's already scheduled or showing.
 2. Confirm before every write: `set`, `play`, `off`, `clear`, `sequence add/update/remove`, `calendar add/remove` and `bridge time`. These change real lights on a real house, so state the exact command you'll run.
-3. If a command fails with "turned off local control", the bridge is on firmware B5010 or later. Nothing here can change its lights, so tell the user and stop. Don't retry, and don't reboot.
+3. If a command fails with "turned off local control" or "not logged in", the bridge is on firmware B5010 or later and needs `everlights login EMAIL`. Ask the user to run it themselves. Never ask for their password or handle it yourself.
 4. Only run `bridge reboot --yes` when the user explicitly asks; it interrupts the lights. The CLI refuses to remove built-in sequences, or sequences an event still uses.
 
 ## Concepts

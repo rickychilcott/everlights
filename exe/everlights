@@ -5,6 +5,11 @@ require "optparse"
 USAGE = <<~TXT
   Usage: everlights COMMAND [args] [options]
 
+  Cloud (bridge firmware B5010 and later turned off local control):
+    login EMAIL [--bridge SERIAL]         sign in to your EverLights account; commands then go through the cloud
+                                          (asks for the password, or reads it from a pipe; saves tokens, not it)
+    logout                                forget the login; commands use the local bridge API again
+
   Bridge:
     bridge                                firmware, network, cloud, zone health
     bridge health                         ok/WARN per check; exit 2 on any warning (for cron)
@@ -42,7 +47,8 @@ TXT
 opts = {effects: {}, limit: 365}
 parser = OptionParser.new do |o|
   o.banner = USAGE
-  o.on("--host HOST", "bridge IP (default $EVERLIGHTS_HOST, then the config's bridge.host)") { opts[:host] = _1 }
+  o.on("--host HOST", "bridge IP, for the local API (default when not logged in: $EVERLIGHTS_HOST, then the config's bridge.host)") { opts[:host] = _1 }
+  o.on("--bridge SERIAL", "login: which of the account's bridges to use (default the first)") { opts[:bridge] = _1 }
   o.on("--config PATH", "config file (default $EVERLIGHTS_CONFIG, then config/everlights.yml)") { opts[:config] = _1 }
   o.on("--zone SERIAL", "limit set/play/off/clear/show to a zone (repeatable)") { (opts[:zones] ||= []) << _1 }
   o.on("--effect E[=N]", "N 0-255 (default 128): #{Everlights::EFFECTS.join(" ")}") do |e|
@@ -71,12 +77,36 @@ begin
            elsif opts[:config] || ENV["EVERLIGHTS_CONFIG"] then raise Everlights::Error, "no config at #{config_path}"
            end
   ENV["TZ"] = config["timezone"] if config&.dig("timezone")
-  el = Everlights::Client.new(opts[:host] || ENV["EVERLIGHTS_HOST"] || config&.dig("bridge", "host"))
-  zones = opts[:zones]
   cmd = ARGV.shift
   cmd = "#{cmd} #{ARGV.shift}" if %w[sequence calendar].include?(cmd) ||
                                    (cmd == "bridge" && %w[health time reboot].include?(ARGV.first))
   arg = ARGV.join(" ")
+  cloud = Everlights::Cloud.new
+
+  case cmd
+  when "login"
+    abort "login EMAIL" unless ARGV.size == 1
+    password = if $stdin.tty?
+                 require "io/console"
+                 IO.console.getpass("EverLights password for #{arg}: ")
+               else $stdin.gets.to_s.chomp
+               end
+    cloud, bridges = Everlights::Cloud.login(arg, password, bridge: opts[:bridge])
+    bridges.each { |b| puts "#{b["serial"] == cloud.bridge ? "*" : " "} #{b["serial"]}  #{b["name"]}  firmware #{b["firmware"]}" }
+    puts "Logged in. Commands now go to bridge #{cloud.bridge} through the EverLights cloud."
+    puts "To use another, run `everlights login #{arg} --bridge SERIAL`." if bridges.size > 1
+    exit
+  when "logout"
+    cloud.logout
+    puts "Logged out. Commands use the local bridge API again."
+    exit
+  end
+
+  # Logged in: through the cloud, unless --host asks for the local API.
+  el = if cloud.logged_in? && !opts[:host] then Everlights::Client.new(cloud: cloud)
+       else Everlights::Client.new(opts[:host] || ENV["EVERLIGHTS_HOST"] || config&.dig("bridge", "host"))
+       end
+  zones = opts[:zones]
 
   case cmd
   when "bridge"
@@ -85,8 +115,8 @@ begin
     else
       at = ->(v) { v ? Time.parse(v).localtime.strftime("%Y-%m-%d %H:%M:%S") : "?" }
       net = b["network"] || {}
-      puts "Bridge #{b["serial"]}  firmware #{b["firmwareVersion"]}, radio #{b["radioFirmwareVersion"]}"
-      puts "  network  #{net["interface"] || "?"} #{b["localIp"]}, ntp #{net["ntp"] ? "ok" : "off"}"
+      puts "Bridge #{b["serial"]}  firmware #{b["firmwareVersion"]}, radio #{b["radioFirmwareVersion"] || "?"}#{"  (via the EverLights cloud)" if el.cloud?}"
+      puts "  network  #{net["interface"] || "?"} #{b["localIp"]}, ntp #{{true => "ok", false => "off"}.fetch(net["ntp"], "?")}"
       puts "  cloud    #{b["serverReachable"] ? "reachable" : "UNREACHABLE"}, last check-in #{at.(b["lastServerCheckin"])}"
       puts "  reboots  #{b["rebootCount"]}"
       b["zones"].each do |z|
@@ -97,7 +127,7 @@ begin
       end
     end
   when "bridge health"
-    checks = Everlights.health(el.status)
+    checks = Everlights.health(el.status, via_cloud: el.cloud?)
     checks.each { |ok, name, text| puts "#{{info: "info", true => "ok  ", false => "WARN"}[ok]}  #{name.ljust(19)} #{text}" }
     exit 2 unless checks.all? { _1[0] }
   when "bridge time"
