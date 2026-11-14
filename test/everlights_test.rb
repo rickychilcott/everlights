@@ -180,6 +180,16 @@ class EverlightsTest < Minitest::Test
     assert_match(%r{GET /v1/zones -> 500}, err.message)
   end
 
+  def test_b5010_firmware_says_local_control_is_off
+    _, err, st = cli("play", "Hallows Eve", routes: {"GET /v1/sequences" => 410})
+    assert_equal 1, st.exitstatus
+    assert_match(/turned off local control.*B5010/, err)
+    @bridge = nil # a fresh fake with its own routes
+    out, _, st = cli("bridge", "health", routes: {"GET /v1" => healthy_bridge.merge("firmwareVersion" => "B5010", "cloud" => true)})
+    assert_equal 2, st.exitstatus
+    assert_match(/^WARN  local control +off: firmware B5010/, out)
+  end
+
   # --- CLI, one test per command ---
 
   def cli(*args, routes: {})

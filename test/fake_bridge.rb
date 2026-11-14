@@ -20,7 +20,8 @@ class FakeBridge
         body = len.positive? ? JSON.parse(c.read(len)) : nil
         @requests << [verb, path, body]
         canned = routes.fetch("#{verb} #{path}") { body }
-        code, reply = canned.is_a?(Integer) ? [canned, "boom"] : [200, JSON.generate(canned)] # Integer route = error status
+        # Integer route = error status; 410 answers as firmware B5010 does
+        code, reply = canned.is_a?(Integer) ? [canned, canned == 410 ? '{"error":"gone","cloud":true}' : "boom"] : [200, JSON.generate(canned)]
         c.write "HTTP/1.1 #{code} X\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\nConnection: close\r\n\r\n#{reply}"
         c.close
       end
