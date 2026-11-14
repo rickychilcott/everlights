@@ -202,7 +202,7 @@ ruby -Ilib -e 'Dir["test/*_test.rb"].each { require "./#{_1}" }'
 
 The tests run against a fake bridge, so no hardware is needed. CI runs them on every push and pull request.
 
-To release, bump the version in `everlights.gemspec`, commit, then tag and push (`git tag v0.2.0 && git push origin v0.2.0`). The release workflow tests, then publishes to RubyGems and GitHub Packages and creates a GitHub release with the `.gem` attached.
+To release, bump the version in `everlights.gemspec`, commit, then tag and push (`git tag v1.0.0 && git push origin v1.0.0`). The release workflow tests, then publishes to RubyGems and GitHub Packages and creates a GitHub release with the `.gem` attached.
 
 ## Credits
 

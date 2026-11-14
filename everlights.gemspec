@@ -1,8 +1,8 @@
 Gem::Specification.new do |s|
   s.name = "everlights"
-  s.version = "0.2.0"
-  s.summary = "Client and CLI for the EverLights Smart Lights Bridge local API"
-  s.description = "Control EverLights permanent lights over the LAN: show colors, manage sequences, and schedule shows ahead on the bridge's calendar. Unofficial; stdlib only."
+  s.version = "1.0.0"
+  s.summary = "Client and CLI for the EverLights v3 Smart Lights Bridge, through the cloud or the local API"
+  s.description = "Control EverLights permanent lights: show colors, manage sequences, and schedule a year of shows ahead on the bridge's calendar from one config file, with holidays, calendar feeds and gradients. Reaches firmware B5010+ bridges through the EverLights cloud, older ones on the LAN. Unofficial; stdlib only."
   s.authors = ["Ricky Chilcott"]
   s.email = "ricky@rickychilcott.com"
   s.license = "MIT"
