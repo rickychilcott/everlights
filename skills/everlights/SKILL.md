@@ -73,4 +73,3 @@ Sync only changes what it created itself. Config problems abort before anything 
 - Whether "dusk" shows really start at dusk. The bridge stores a 17:00 placeholder, so they may start at 17:00. Use `--start` when the exact time matters.
 - What N means for each effect.
 - Whether a calendar entry overlapping another replaces it or conflicts. Check `calendar list` afterwards.
-- `calendar remove` on a night that isn't an entry's last edits the event with a PUT. The API spec has it; not yet tried on the bridge.

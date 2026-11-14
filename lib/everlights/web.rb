@@ -165,9 +165,11 @@ module Everlights
     def self.dump(config)
       doc = YAML.parse_stream(YAML.dump(config))
       doc.each do |n|
-        leaves = n.respond_to?(:children) && n.children&.all?(Psych::Nodes::Scalar)
-        n.style = Psych::Nodes::Sequence::FLOW if n.is_a?(Psych::Nodes::Sequence) && leaves
-        n.style = Psych::Nodes::Mapping::FLOW if n.is_a?(Psych::Nodes::Mapping) && leaves && n.children.size <= 4
+        next unless n.respond_to?(:children) && n.children&.all?(Psych::Nodes::Scalar)
+        next unless n.is_a?(Psych::Nodes::Sequence) || (n.is_a?(Psych::Nodes::Mapping) && n.children.size <= 4)
+        n.style = n.class::FLOW
+        # "Name:30" can't be plain inside [...]; let libyaml quote it rather than tag it `! 'Name:30'`
+        n.children.each { _1.quoted = true if _1.plain }
       end
       doc.to_yaml.delete_prefix("---\n")
     end

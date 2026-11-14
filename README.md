@@ -65,6 +65,7 @@ Describe your own sequences and a schedule once. `everlights sync` then builds t
 everlights init                                          # writes config/everlights.yml: US holidays, a birthday, a season
 everlights sync --dry-run                                # print the plan
 everlights sync                                          # apply it
+everlights export                                        # what the app made, as config YAML to adopt
 ```
 
 ```yaml
@@ -87,7 +88,7 @@ schedule:                           # higher in the list wins a shared night
   - `every:` takes weekdays, optionally limited by `from:`/`to:`.
 - **Times:** `start:` is `dusk`, `dusk+15` or `"18:30"`; `end:` defaults to `"23:00"`. An end earlier than the start means the next morning.
 - **Future only:** sync adds only nights that start more than 15 minutes from now. Each rule becomes one calendar entry, and re-running sync rolls the window forward.
-- **Leaves your app-made shows alone:** sync only changes or deletes what it created, tracked in `config/.sync-state.yml`. It skips nights an app-made show already covers, and refuses names that clash with built-ins or app-made items. If the state file is lost, `--adopt` takes back items whose names match the config.
+- **Leaves your app-made shows alone:** sync only changes or deletes what it created, tracked in `config/.sync-state.yml`. It skips nights an app-made show already covers, and refuses names that clash with built-ins or app-made items. If the state file is lost, `--adopt` takes back items whose names match the config. To bring shows and sequences made in the app under the config, `everlights export` prints them as config YAML: add it to the file, then `sync --adopt`.
 - **All or nothing:** every config problem is reported before anything is written.
 - **Config location:** `--config` or `$EVERLIGHTS_CONFIG`. The config's `bridge.host` is used by every command unless `--host` or `$EVERLIGHTS_HOST` is set.
 - **Time zone:** set `timezone:` in the config, or it uses your machine's.
